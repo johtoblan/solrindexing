@@ -15,18 +15,9 @@ NOTES:
 """
 
 import sys
-import os.path
 import argparse
-import subprocess
 import pysolr
-import xmltodict
-import dateutil.parser
-import warnings
-import json
 import yaml
-from collections import OrderedDict
-from owslib.wms import WebMapService
-import base64
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
