@@ -1,6 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
 """
+SOLR-indexer : Main indexer
+===========================
+
+Copyright 2021 MET Norway
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
 PURPOSE:
     This is designed to simplify the process of indexing single or multiple datasets.
 
@@ -14,89 +31,36 @@ UPDATES:
         Added support for level 2
     Øystein Godøy, METNO/FOU, 2021-02-19
         Added argparse, fixing robustness issues.
+    Johannes Langvatn, METNO/SUV, 2023-02-07
+        Started refactoring
 
 NOTES:
     - under rewrite...
-
 """
 
-import sys
-import os.path
-import argparse
-import subprocess
-import pysolr
-import xmltodict
-import dateutil.parser
-import warnings
-import json
-import yaml
+import os
 import math
-from collections import OrderedDict
-import cartopy.crs as ccrs
-import cartopy
-import matplotlib.pyplot as plt
-from owslib.wms import WebMapService
 import base64
+import pysolr
 import netCDF4
 import logging
+import warnings
+import xmltodict
+import dateutil.parser
 import lxml.etree as ET
-from logging.handlers import TimedRotatingFileHandler
-from time import sleep
-import pickle
-from shapely.geometry import box
-from shapely.wkt import loads
-from shapely.geometry import mapping
-import geojson
-import pyproj
+import cartopy.crs as ccrs
+import matplotlib.pyplot as plt
 import shapely.geometry as shpgeo
-import shapely.wkt
 
-#For basic authentication
-from requests.auth import HTTPBasicAuth
-def parse_arguments():
-    parser = argparse.ArgumentParser()
+from collections import OrderedDict
+from owslib.wms import WebMapService
+from shapely.geometry import box, mapping
 
-    parser.add_argument('-a','--always_commit',action='store_true', help='Specification of whether always commit or not to SolR')
-    parser.add_argument('-c','--cfg',dest='cfgfile', help='Configuration file', required=True)
-    parser.add_argument('-i','--input_file',help='Individual file to be ingested.')
-    parser.add_argument('-l','--list_file',help='File with datasets to be ingested specified.')
-    parser.add_argument('-d','--directory',help='Directory to ingest')
-    parser.add_argument('-t','--thumbnail',help='Create and index thumbnail, do not update the main content.', action='store_true')
-    parser.add_argument('-n','--no_thumbnail',help='Do not index thumbnails (normally done automatically if WMS available).', action='store_true')
-    #parser.add_argument('-f','--feature_type',help='Extract featureType during ingestion (to be done automatically).', action='store_true')
-    parser.add_argument('-r','--remove',help='Remove the dataset with the specified identifier (to be replaced by searchindex).')
-    parser.add_argument('-2','--level2',action='store_true', help='Operate on child core.')
 
-    ### Thumbnail parameters
-    parser.add_argument('-m','--map_projection',help='Specify map projection for thumbnail (e.g. Mercator, PlateCarree, PolarStereographic).', required=False)
-    parser.add_argument('-t_layer','--thumbnail_layer',help='Specify wms_layer for thumbnail.', required=False)
-    parser.add_argument('-t_style','--thumbnail_style',help='Specify the style (colorscheme) for the thumbnail.', required=False)
-    parser.add_argument('-t_zl','--thumbnail_zoom_level',help='Specify the zoom level for the thumbnail.', type=float,required=False)
-    parser.add_argument('-ac','--add_coastlines',help='Add coastlines too the thumbnail (True/False). Default True', const=True,nargs='?', required=False)
-    parser.add_argument('-t_extent','--thumbnail_extent',help='Spatial extent of thumbnail in lat/lon degrees like "x0 x1 y0 y1"', required=False, nargs='+')
-
-    args = parser.parse_args()
-
-    if args.cfgfile is None:
-        parser.print_help()
-        parser.exit()
-    if not args.input_file and not args.directory and not args.list_file and not args.remove:
-        parser.print_help()
-        parser.exit()
-
-    return args
-
-def parse_cfg(cfgfile):
-    # Read config file
-    print("Reading", cfgfile)
-    with open(cfgfile, 'r') as ymlfile:
-        cfgstr = yaml.full_load(ymlfile)
-
-    return cfgstr
+logger = logging.getLogger(__name__)
 
 def getZones(lon, lat):
     "get UTM zone number from latitude and longitude"
-
     if lat >= 72.0 and lat < 84.0:
         if lon >= 0.0 and lon < 9.0:
             return 31
@@ -111,49 +75,18 @@ def getZones(lon, lat):
     return math.floor((lon + 180) / 6) + 1
 
 
-def initialise_logger(outputfile, name):
-    # Check that logfile exists
-    logdir = os.path.dirname(outputfile)
-    if not os.path.exists(logdir):
-        try:
-            os.makedirs(logdir)
-        except:
-            raise IOError
-    # Set up logging
-    mylog = logging.getLogger(name)
-    mylog.setLevel(logging.INFO)
-    #logging.basicConfig(level=logging.INFO,
-    #        format='%(asctime)s - %(levelname)s - %(message)s')
-    myformat = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(myformat)
-    mylog.addHandler(console_handler)
-    file_handler = logging.handlers.TimedRotatingFileHandler(
-            outputfile,
-            when='w0',
-            interval=1,
-            backupCount=7)
-    file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(myformat)
-    mylog.addHandler(file_handler)
-
-    return(mylog)
-
 class MMD4SolR:
     """ Read and check MMD files, convert to dictionary """
 
     def __init__(self, filename):
-        # Set up logging
-        self.logger = logging.getLogger('indexdata.MMD4SolR')
-        self.logger.info('Creating an instance of IndexMMD')
+        logger.info('Creating an instance of IndexMMD')
         """ set variables in class """
         self.filename = filename
         try:
             with open(self.filename, encoding='utf-8') as fd:
                 self.mydoc = xmltodict.parse(fd.read())
         except Exception as e:
-            self.logger.error('Could not open file: %s',self.filename)
+            logger.error('Could not open file: %s',self.filename)
             raise
 
     def check_mmd(self):
@@ -186,16 +119,16 @@ class MMD4SolR:
         """
         for requirement in mmd_requirements.keys():
             if requirement in self.mydoc['mmd:mmd']:
-                self.logger.info('\n\tChecking for: %s',requirement)
+                logger.info('\n\tChecking for: %s',requirement)
                 if requirement in self.mydoc['mmd:mmd']:
                     if self.mydoc['mmd:mmd'][requirement] != None:
-                        self.logger.info('\n\t%s is present and non empty',requirement)
+                        logger.info('\n\t%s is present and non empty',requirement)
                         mmd_requirements[requirement] = True
                     else:
-                        self.logger.warning('\n\tRequired element %s is missing, setting it to unknown',requirement)
+                        logger.warning('\n\tRequired element %s is missing, setting it to unknown',requirement)
                         self.mydoc['mmd:mmd'][requirement] = 'Unknown'
                 else:
-                    self.logger.warning('\n\tRequired element %s is missing, setting it to unknown.',requirement)
+                    logger.warning('\n\tRequired element %s is missing, setting it to unknown.',requirement)
                     self.mydoc['mmd:mmd'][requirement] = 'Unknown'
 
         """
@@ -250,7 +183,7 @@ class MMD4SolR:
                                     'Comprehensive quality control'],
         }
         for element in mmd_controlled_elements.keys():
-            self.logger.info('\n\tChecking %s\n\tfor compliance with controlled vocabulary', element)
+            logger.info('\n\tChecking %s\n\tfor compliance with controlled vocabulary', element)
             if element in self.mydoc['mmd:mmd']:
 
                 if isinstance(self.mydoc['mmd:mmd'][element], list):
@@ -261,16 +194,16 @@ class MMD4SolR:
                             myvalue = elem
                         if myvalue not in mmd_controlled_elements[element]:
                             if myvalue is not None:
-                                self.logger.warning('\n\t%s contains non valid content: \n\t\t%s', element, myvalue)
+                                logger.warning('\n\t%s contains non valid content: \n\t\t%s', element, myvalue)
                             else:
-                                self.logger.warning('Discovered an empty element.')
+                                logger.warning('Discovered an empty element.')
                 else:
                     if isinstance(self.mydoc['mmd:mmd'][element],dict):
                         myvalue = self.mydoc['mmd:mmd'][element]['#text']
                     else:
                         myvalue = self.mydoc['mmd:mmd'][element]
                     if myvalue not in mmd_controlled_elements[element]:
-                        self.logger.warning('\n\t%s contains non valid content: \n\t\t%s', element, myvalue)
+                        logger.warning('\n\t%s contains non valid content: \n\t\t%s', element, myvalue)
 
         """
         Check that keywords also contain GCMD keywords
@@ -287,13 +220,13 @@ class MMD4SolR:
                     break
                 i += 1
             if not gcmd:
-                self.logger.warning('\n\tKeywords in GCMD are not available (a)')
+                logger.warning('\n\tKeywords in GCMD are not available (a)')
         else:
             if str(self.mydoc['mmd:mmd']['mmd:keywords']['@vocabulary']).upper() == 'GCMDSK':
                 gcmd = True
             else:
                 # warnings.warning('Keywords in GCMD are not available')
-                self.logger.warning('\n\tKeywords in GCMD are not available (b)')
+                logger.warning('\n\tKeywords in GCMD are not available (b)')
 
         """
         Modify dates if necessary
@@ -325,7 +258,7 @@ class MMD4SolR:
             else:
                 # To be removed when all records are transformed into the
                 # new format
-                self.logger.warning('Removed D7 format in last_metadata_update')
+                logger.warning('Removed D7 format in last_metadata_update')
                 if self.mydoc['mmd:mmd']['mmd:last_metadata_update'].endswith('Z'):
                     myvalue = self.mydoc['mmd:mmd']['mmd:last_metadata_update']
                 else:
@@ -359,7 +292,7 @@ class MMD4SolR:
                             mydate = dateutil.parser.parse(str(self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey]))
                             self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey] = mydate.strftime('%Y-%m-%dT%H:%M:%SZ')
                         except Exception as e:
-                            self.logger.error('Date format could not be parsed: %s', e)
+                            logger.error('Date format could not be parsed: %s', e)
 
     def tosolr(self):
         """
@@ -528,7 +461,7 @@ class MMD4SolR:
         if 'mmd:geographic_extent' in self.mydoc['mmd:mmd'] and self.mydoc['mmd:mmd']['mmd:geographic_extent'] != None:
             if isinstance(self.mydoc['mmd:mmd']['mmd:geographic_extent'],
                     list):
-                self.logger.warning('This is a challenge as multiple bounding boxes are not supported in MMD yet, flattening information')
+                logger.warning('This is a challenge as multiple bounding boxes are not supported in MMD yet, flattening information')
                 latvals = []
                 lonvals = []
                 for e in self.mydoc['mmd:mmd']['mmd:geographic_extent']:
@@ -581,7 +514,7 @@ class MMD4SolR:
                 for item in self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']:
                     #print(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle'][item])
                     if self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle'][item] == None:
-                        self.logger.warning('Missing geographical element, will not process the file.')
+                        logger.warning('Missing geographical element, will not process the file.')
                         mydict['metadata_status'] = 'Inactive'
                         raise Warning('Missing spatial bounds')
 
@@ -623,7 +556,7 @@ class MMD4SolR:
                     #mydict['geom'] = geojson.dumps(mapping(p))
                     #print(mydict['geom'])
 
-        self.logger.info('Add location element?')
+        logger.info('Add location element?')
 
         """ Dataset production status """
         if 'mmd:dataset_production_status' in self.mydoc['mmd:mmd']:
@@ -652,7 +585,7 @@ class MMD4SolR:
                 mydict['use_constraint_identifier'] = str(self.mydoc['mmd:mmd']['mmd:use_constraint']['mmd:identifier'])
                 mydict['use_constraint_resource'] = str(self.mydoc['mmd:mmd']['mmd:use_constraint']['mmd:resource'])
             else:
-                self.logger.warning('Both license identifier and resource need to be present to index this properly')
+                logger.warning('Both license identifier and resource need to be present to index this properly')
                 mydict['use_constraint_identifier'] =  "Not provided"
                 mydict['use_constraint_resource'] =  "Not provided"
             if 'mmd:license_text' in self.mydoc['mmd:mmd']['mmd:use_constraint']:
@@ -688,10 +621,10 @@ class MMD4SolR:
             for personnel in personnel_elements:
                 role = personnel['mmd:role']
                 if not role:
-                    self.logger.warning('No role available for personnel')
+                    logger.warning('No role available for personnel')
                     break
                 if role not in personnel_role_LUT:
-                    self.logger.warning('Wrong role provided for personnel')
+                    logger.warning('Wrong role provided for personnel')
                     break
                 for entry in personnel:
                     entry_type = entry.split(':')[-1]
@@ -770,7 +703,7 @@ class MMD4SolR:
             idrepls = [':','/','.']
             if isinstance(self.mydoc['mmd:mmd']['mmd:related_dataset'],
                     list):
-                self.logger.warning('Too many fields in related_dataset...')
+                logger.warning('Too many fields in related_dataset...')
                 for e in self.mydoc['mmd:mmd']['mmd:related_dataset']:
                     if '@mmd:relation_type' in e:
                         if e['@mmd:relation_type'] == 'parent':
@@ -798,13 +731,13 @@ class MMD4SolR:
                     mydict['storage_information_file_size'] = str(self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:file_size']['#text'])
                     mydict['storage_information_file_size_unit'] = str(self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:file_size']['@unit'])
                 else:
-                    self.logger.warning("Filesize unit not specified, skipping field")
+                    logger.warning("Filesize unit not specified, skipping field")
             if 'mmd:checksum' in self.mydoc['mmd:mmd']['mmd:storage_information'] and self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:checksum'] != None:
                 if isinstance(self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:checksum'], dict):
                     mydict['storage_information_file_checksum'] = str(self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:checksum']['#text'])
                     mydict['storage_information_file_checksum_type'] = str(self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:checksum']['@type'])
                 else:
-                    self.logger.warning("Checksum type is not specified, skipping field")
+                    logger.warning("Checksum type is not specified, skipping field")
 
 
         """ Related information """
@@ -989,8 +922,7 @@ class IndexMMD:
 
     def __init__(self, mysolrserver, always_commit=False, authentication=None):
         # Set up logging
-        self.logger = logging.getLogger('indexdata.IndexMMD')
-        self.logger.info('Creating an instance of IndexMMD')
+        logger.info('Creating an instance of IndexMMD')
 
         # level variables
 
@@ -1009,10 +941,10 @@ class IndexMMD:
         # Connecting to core
         try:
             self.solrc = pysolr.Solr(mysolrserver, always_commit=always_commit, timeout=1020, auth=authentication)
-            self.logger.info("Connection established to: %s", str(mysolrserver))
+            logger.info("Connection established to: %s", str(mysolrserver))
         except Exception as e:
-            self.logger.error("Something failed in SolR init: %s", str(e))
-            self.logger.info("Add a sys.exit?")
+            logger.error("Something failed in SolR init: %s", str(e))
+            logger.info("Add a sys.exit?")
 
     #Function for sending explicit commit to solr
     def commit(self):
@@ -1042,10 +974,10 @@ class IndexMMD:
         elif level == 2:
             input_record.update({'dataset_type':'Level-2'})
         else:
-            self.logger.error('Invalid level given: {}. Hence terminating'.format(level))
+            logger.error('Invalid level given: {}. Hence terminating'.format(level))
 
         if input_record['metadata_status'] == 'Inactive':
-            mylog.warning('Skipping record')
+            logger.warning('Skipping record')
             return False
         myfeature = None
         if 'data_access_url_opendap' in input_record:
@@ -1054,15 +986,15 @@ class IndexMMD:
             try:
                 myfeature = self.get_feature_type(input_record['data_access_url_opendap'])
             except Exception as e:
-                self.logger.error("Something failed while retrieving feature type: %s", str(e))
+                logger.error("Something failed while retrieving feature type: %s", str(e))
                 #raise RuntimeError('Something failed while retrieving feature type')
             if myfeature:
-                self.logger.info('feature_type found: %s', myfeature)
+                logger.info('feature_type found: %s', myfeature)
                 input_record.update({'feature_type':myfeature})
 
         self.id = input_record['id']
         if 'data_access_url_ogc_wms' in input_record and addThumbnail == True:
-            self.logger.info("Checking thumbnails...")
+            logger.info("Checking thumbnails...")
             getCapUrl = input_record['data_access_url_ogc_wms']
             if not myfeature:
                 self.thumbnail_type = 'wms'
@@ -1076,13 +1008,13 @@ class IndexMMD:
             thumbnail_data = self.add_thumbnail(url=getCapUrl)
 
             if not thumbnail_data:
-                self.logger.warning('Could not properly parse WMS GetCapabilities document')
+                logger.warning('Could not properly parse WMS GetCapabilities document')
                 # If WMS is not available, remove this data_access element from the XML that is indexed
                 del input_record['data_access_url_ogc_wms']
             else:
                 input_record.update({'thumbnail_data':thumbnail_data})
 
-        self.logger.info("Adding records to core...")
+        logger.info("Adding records to core...")
 
         mmd_record = list()
         mmd_record.append(input_record)
@@ -1090,9 +1022,9 @@ class IndexMMD:
         try:
             self.solrc.add(mmd_record)
         except Exception as e:
-            self.logger.error("Something failed in SolR adding document: %s", str(e))
+            logger.error("Something failed in SolR adding document: %s", str(e))
             return False
-        self.logger.info("Record successfully added.")
+        logger.info("Record successfully added.")
 
         return True
 
@@ -1116,16 +1048,16 @@ class IndexMMD:
             try:
                 myfeature = self.get_feature_type(myl2record['data_access_url_opendap'])
             except Exception as e:
-                self.logger.error("Something failed while retrieving feature type: %s", str(e))
+                logger.error("Something failed while retrieving feature type: %s", str(e))
                 #raise RuntimeError('Something failed while retrieving feature type')
             if myfeature:
-                self.logger.info('feature_type found: %s', myfeature)
+                logger.info('feature_type found: %s', myfeature)
                 myl2record.update({'feature_type':myfeature})
 
         self.id = myl2record['id']
         # Add thumbnail for WMS supported datasets
         if 'data_access_url_ogc_wms' in myl2record and addThumbnail:
-            self.logger.info("Checking tumbnails...")
+            logger.info("Checking tumbnails...")
             if not myfeature:
                 self.thumbnail_type = 'wms'
             self.wms_layer = wms_layer
@@ -1140,7 +1072,7 @@ class IndexMMD:
                 try:
                     thumbnail_data = self.add_thumbnail(url=getCapUrl)
                 except Exception as e:
-                    self.logger.error("Something failed in adding thumbnail: %s", str(e))
+                    logger.error("Something failed in adding thumbnail: %s", str(e))
                     warnings.warning("Couldn't add thumbnail.")
 
         if addThumbnail and thumbnail_data:
@@ -1156,11 +1088,11 @@ class IndexMMD:
         try:
             myresults = self.solrc.search('id:' + myparid, **{'wt':'python','rows':100})
         except Exception as e:
-            self.logger.error("Something failed in searching for parent dataset, " + str(e))
+            logger.error("Something failed in searching for parent dataset, " + str(e))
 
         # Check that only one record is returned
         if len(myresults) != 1:
-            self.logger.warning("Didn't find unique parent record, skipping record")
+            logger.warning("Didn't find unique parent record, skipping record")
             return
         # Convert from pySolr results object to dict and return.
         for result in myresults:
@@ -1190,9 +1122,9 @@ class IndexMMD:
             if myl2record['metadata_identifier'].replace(':','_') not in myresults['related_dataset']:
                 myresults['related_dataset'].append(myl2record['metadata_identifier'].replace(':','_'))
         else:
-            self.logger.info('This dataset was not found in parent, creating it...')
+            logger.info('This dataset was not found in parent, creating it...')
             myresults['related_dataset'] = []
-            self.logger.info('Adding dataset with identifier %s to parent %s', myl2record['metadata_identifier'].replace(':','_'),myl2record['related_dataset'])
+            logger.info('Adding dataset with identifier %s to parent %s', myl2record['metadata_identifier'].replace(':','_'),myl2record['related_dataset'])
             myresults['related_dataset'].append(myl2record['metadata_identifier'].replace(':','_'))
         mmd_record1 = list()
         mmd_record1.append(myresults)
@@ -1204,14 +1136,14 @@ class IndexMMD:
             self.solrc.add(mmd_record2)
         except Exception as e:
             raise Exception("Something failed in SolR add level 2", str(e))
-        self.logger.info("Level 2 record successfully added.")
+        logger.info("Level 2 record successfully added.")
 
         """ Update level 1 record with id of this dataset """
         try:
             self.solrc.add(mmd_record1)
         except Exception as e:
             raise Exception("Something failed in SolR update level 1 for level 2", str(e))
-        self.logger.info("Level 1 record successfully updated.")
+        logger.info("Level 1 record successfully updated.")
 
     def add_thumbnail(self, url, thumbnail_type='wms'):
         """ Add thumbnail to SolR
@@ -1226,13 +1158,13 @@ class IndexMMD:
                 thumbnail = self.create_wms_thumbnail(url)
                 return thumbnail
             except Exception as e:
-                self.logger.error("Thumbnail creation from OGC WMS failed: %s",e)
+                logger.error("Thumbnail creation from OGC WMS failed: %s",e)
                 return None
         elif thumbnail_type == 'ts': #time_series
             thumbnail = 'TMP'  # create_ts_thumbnail(...)
             return thumbnail
         else:
-            self.logger.error('Invalid thumbnail type: {}'.format(thumbnail_type))
+            logger.error('Invalid thumbnail type: {}'.format(thumbnail_type))
             return None
 
 
@@ -1263,7 +1195,7 @@ class IndexMMD:
 
         if wms_layer not in available_layers:
             wms_layer = available_layers[0]
-            self.logger.info('Creating WMS thumbnail for layer: {}'.format(wms_layer))
+            logger.info('Creating WMS thumbnail for layer: {}'.format(wms_layer))
 
         # Checking styles
         available_styles = list(wms.contents[wms_layer].styles.keys())
@@ -1298,7 +1230,7 @@ class IndexMMD:
                     cartopy_extent_zoomed[i] = max_extent[i]
 
         subplot_kw = dict(projection=map_projection)
-        self.logger.info(subplot_kw)
+        logger.info(subplot_kw)
 
         fig, ax = plt.subplots(subplot_kw=subplot_kw)
 
@@ -1351,25 +1283,25 @@ class IndexMMD:
 
     def get_feature_type(self, myopendap):
         """ Set feature type from OPeNDAP """
-        self.logger.info("Now in get_feature_type")
+        logger.info("Now in get_feature_type")
 
         # Open as OPeNDAP
         try:
             ds = netCDF4.Dataset(myopendap)
         except Exception as e:
-            self.logger.error("Something failed reading dataset: %s", str(e))
+            logger.error("Something failed reading dataset: %s", str(e))
 
         # Try to get the global attribute featureType
         try:
             featureType = ds.getncattr('featureType')
         except Exception as e:
-            self.logger.error("Something failed extracting featureType: %s", str(e))
+            logger.error("Something failed extracting featureType: %s", str(e))
             raise
         ds.close()
 
         if featureType not in ['point', 'timeSeries', 'trajectory','profile','timeSeriesProfile','trajectoryProfile']:
-            self.logger.warning("The featureType found - %s - is not valid", featureType)
-            self.logger.warning("Fixing this locally")
+            logger.warning("The featureType found - %s - is not valid", featureType)
+            logger.warning("Fixing this locally")
             if featureType == "TimeSeries":
                 featureType = 'timeSeries'
             elif featureType == "timeseries":
@@ -1377,7 +1309,7 @@ class IndexMMD:
             elif featureType == "timseries":
                 featureType = 'timeSeries'
             else:
-                self.logger.warning("The featureType found is a new typo...")
+                logger.warning("The featureType found is a new typo...")
 
             #raise
 
@@ -1386,45 +1318,45 @@ class IndexMMD:
     def delete_level1(self, datasetid):
         """ Require ID as input """
         """ Rewrite to take full metadata record as input """
-        self.logger.info("Deleting %s from level 1.", datasetid)
+        logger.info("Deleting %s from level 1.", datasetid)
         try:
             self.solrc.delete(id=datasetid)
         except Exception as e:
-            self.logger.error("Something failed in SolR delete: %s", str(e))
+            logger.error("Something failed in SolR delete: %s", str(e))
             raise
 
-        self.logger.info("Record successfully deleted from Level 1 core")
+        logger.info("Record successfully deleted from Level 1 core")
 
     def delete_level2(self, datasetid):
         """ Require ID as input """
         """ Rewrite to take full metadata record as input """
-        self.logger.info("Deleting %s from level 2.", datasetid)
+        logger.info("Deleting %s from level 2.", datasetid)
         try:
             self.solr2.delete(id=datasetid)
         except Exception as e:
-            self.logger.error("Something failed in SolR delete: %s", str(e))
+            logger.error("Something failed in SolR delete: %s", str(e))
             raise
 
-        self.logger.info("Records successfully deleted from Level 2 core")
+        logger.info("Records successfully deleted from Level 2 core")
 
     def delete_thumbnail(self, datasetid):
         """ Require ID as input """
         """ Rewrite to take full metadata record as input """
-        self.logger.info("Deleting %s from thumbnail core.", datasetid)
+        logger.info("Deleting %s from thumbnail core.", datasetid)
         try:
             self.solrt.delete(id=datasetid)
         except Exception as e:
-            self.logger.error("Something failed in SolR delete: %s", str(e))
+            logger.error("Something failed in SolR delete: %s", str(e))
             raise
 
-        self.logger.info("Records successfully deleted from thumbnail core")
+        logger.info("Records successfully deleted from thumbnail core")
 
     def search(self):
         """ Require Id as input """
         try:
             results = solr.search('mmd_title:Sea Ice Extent', df='text_en', rows=100)
         except Exception as e:
-            self.logger.error("Something failed during search: %s", str(e))
+            logger.error("Something failed during search: %s", str(e))
 
         return results
 
@@ -1444,229 +1376,3 @@ class IndexMMD:
             mylinks[proto] = myurl
 
         return (mylinks)
-
-def main(argv):
-
-    # Parse command line arguments
-    try:
-        args = parse_arguments()
-    except Exception as e:
-        print("Something failed in parsing arguments: %s", str(e))
-        raise SystemExit('Command line arguments didn\'t parse correctly.')
-
-    # Parse configuration file
-    cfgstr = parse_cfg(args.cfgfile)
-
-    # Initialise logging
-    mylog = initialise_logger(cfgstr['logfile'], 'indexdata')
-    mylog.info('Configuration of logging is finished.')
-
-    tflg = l2flg = fflg = False
-    if args.level2:
-        l2flg = True
-
-    # Read config file
-    with open(args.cfgfile, 'r') as ymlfile:
-        cfg = yaml.load(ymlfile, Loader=yaml.FullLoader)
-
-    # Specify map projection
-    if args.map_projection:
-        map_projection = args.map_projection
-    else:
-        map_projection = cfg['wms-thumbnail-projection']
-    if map_projection == 'Mercator':
-        mapprojection = ccrs.Mercator()
-    elif map_projection == 'PlateCarree':
-        mapprojection = ccrs.PlateCarree()
-    elif map_projection == 'PolarStereographic':
-        mapprojection = ccrs.Stereographic(central_longitude=0.0,central_latitude=90., true_scale_latitude=60.)
-    else:
-        raise Exception('Map projection is not properly specified in config')
-
-    #Enable basic authentication if configured.
-    if 'auth-basic-username' in cfg and 'auth-basic-password' in cfg:
-        username = cfg['auth-basic-username']
-        password = cfg['auth-basic-password']
-        mylog.info("Setting up basic authentication")
-        if username == '' or password == '':
-            raise Exception('Authentication username and/or password are configured, but have blank strings')
-        else:
-            authentication = HTTPBasicAuth(username,password)
-    else:
-        authentication = None
-        mylog.info("Authentication disabled")
-    #Get solr server config
-    SolrServer = cfg['solrserver']
-    myCore = cfg['solrcore']
-
-    # Set up connection to SolR server
-    mySolRc = SolrServer+myCore
-    mysolr = IndexMMD(mySolRc, args.always_commit, authentication)
-
-    # Find files to process
-    # FIXME remove l2 and thumbnail cores, reconsider deletion herein
-    if args.input_file:
-        myfiles = [args.input_file]
-    elif args.list_file:
-        try:
-            f2 = open(args.list_file, "r")
-        except IOError as e:
-            mylog.error('Could not open file: %s %e', args.list_file, e)
-            sys.exit()
-        myfiles = f2.readlines()
-        f2.close()
-    elif args.remove:
-        mysolr.delete_level1(args.remove)
-        sys.exit()
-    elif args.remove and args.level2:
-        mysolr.delete_level2(args.remove)
-        sys.exit()
-    elif args.remove and args.thumbnail:
-        mysolr.delete_thumbnail(deleteid)
-        sys.exit()
-    elif args.directory:
-        try:
-            myfiles = os.listdir(args.directory)
-        except Exception as e:
-            mylog.error("Something went wrong in decoding cmd arguments: %s", e)
-            sys.exit(1)
-
-    fileno = 0
-    myfiles_pending = []
-    for myfile in myfiles:
-        myfile = myfile.strip()
-        # Decide files to operate on
-        if not myfile.endswith('.xml'):
-            continue
-        if args.list_file:
-            myfile = myfile.rstrip()
-        if args.directory:
-            myfile = os.path.join(args.directory, myfile)
-
-        # FIXME, need a better way of handling this, WMS layers should be interpreted automatically, this way we need to know up fron whether WMS makes sense or not and that won't work for harvesting
-        if args.thumbnail_layer:
-            wms_layer = args.thumbnail_layer
-        else:
-            wms_layer = None
-        if args.thumbnail_style:
-            wms_style = args.thumbnail_style
-        else:
-            wms_style =  None
-        if args.thumbnail_zoom_level:
-            wms_zoom_level = args.thumbnail_zoom_level
-        else:
-            wms_zoom_level=0
-        if args.add_coastlines:
-            wms_coastlines = args.add_coastlines
-        else:
-            wms_coastlines=True
-        if args.thumbnail_extent:
-            thumbnail_extent = [int(i) for i in args.thumbnail_extent[0].split(' ')]
-        else:
-            thumbnail_extent = None
-
-        # Index files
-        mylog.info('\n\tProcessing file: %d - %s',fileno, myfile)
-
-        try:
-            mydoc = MMD4SolR(myfile)
-        except Exception as e:
-            mylog.warning('Could not handle file: %s',e)
-            continue
-        mydoc.check_mmd()
-        fileno += 1
-
-        """ Do not search for metadata_identifier, always used id...  """
-        try:
-            newdoc = mydoc.tosolr()
-        except Exception as e:
-            mylog.warning('Could not process the file: %s', e)
-            continue
-        if (newdoc['metadata_status'] == "Inactive"):
-            continue
-        if (not args.no_thumbnail) and ('data_access_url_ogc_wms' in newdoc):
-            tflg = True
-        # Do not directly index children unless they are requested to be children. Do always assume that the parent is included in the indexing process so postpone the actual indexing to allow the parent to be properly indexed in SolR.
-        if 'related_dataset' in newdoc:
-            # Special fix for NPI
-            newdoc['related_dataset'] = newdoc['related_dataset'].replace('https://data.npolar.no/dataset/','')
-            newdoc['related_dataset'] = newdoc['related_dataset'].replace('http://data.npolar.no/dataset/','')
-            newdoc['related_dataset'] = newdoc['related_dataset'].replace('http://api.npolar.no/dataset/','')
-            newdoc['related_dataset'] = newdoc['related_dataset'].replace('.xml','')
-            # Skip if DOI is used to refer to parent, that isn't consistent.
-            if 'doi.org' in newdoc['related_dataset']:
-                continue
-            # Fix special characters that SolR doesn't like
-            idrepls = [':','/','.']
-            myparent = newdoc['related_dataset']
-            for e in idrepls:
-                myparent = myparent.replace(e,'-')
-            #myresults = mysolr.solrc.search('id:' + newdoc['related_dataset'], **{'wt':'python','rows':100})
-            myresults = mysolr.solrc.search('id:' + myparent, **{'wt':'python','rows':100})
-            if len(myresults) == 0:
-                mylog.warning("No parent found. Staging for second run.")
-                myfiles_pending.append(myfile)
-                continue
-            elif not l2flg:
-                mylog.warning("Parent found, but assumes parent will be reindexed, thus postponing indexing of children until SolR is updated.")
-                myfiles_pending.append(myfile)
-                continue
-        mylog.info("Indexing dataset: %s", myfile)
-        if l2flg:
-            mysolr.add_level2(mydoc.tosolr(), addThumbnail=tflg, projection=mapprojection, wmstimeout=120, wms_layer=wms_layer, wms_style=wms_style, wms_zoom_level=wms_zoom_level, add_coastlines=wms_coastlines, wms_timeout=cfg['wms-timeout'], thumbnail_extent=thumbnail_extent)
-        else:
-            if tflg:
-                try:
-                    mysolr.index_record(input_record=mydoc.tosolr(), addThumbnail=tflg, wms_layer=wms_layer,wms_style=wms_style, wms_zoom_level=wms_zoom_level, add_coastlines=wms_coastlines, projection=mapprojection,  wms_timeout=cfg['wms-timeout'],thumbnail_extent=thumbnail_extent)
-                except Exception as e:
-                    mylog.warning('Something failed during indexing %s', e)
-            else:
-                try:
-                    mysolr.index_record(input_record=mydoc.tosolr(), addThumbnail=tflg)
-                except Exception as e:
-                    mylog.warning('Something failed during indexing %s', e)
-        if not args.level2:
-            l2flg = False
-        tflg = False
-
-    # Now process all the level 2 files that failed in the previous
-    # sequence. If the Level 1 dataset is not available, this will fail at
-    # level 2. Meaning, the section below only ingests at level 2.
-    fileno = 0
-    if len(myfiles_pending)>0 and not args.always_commit:
-        mylog.info('Processing files that were not possible to process in first take. Waiting 20 minutes to allow SolR to update recently ingested parent datasets. ')
-        sleep(20*60)
-    for myfile in myfiles_pending:
-        mylog.info('\tProcessing L2 file: %d - %s',fileno, myfile)
-        try:
-            mydoc = MMD4SolR(myfile)
-        except Exception as e:
-            mylog.warning('Could not handle file: %s', e)
-            continue
-        mydoc.check_mmd()
-        fileno += 1
-        """ Do not search for metadata_identifier, always used id...  """
-        """ Check if this can be used???? """
-        newdoc = mydoc.tosolr()
-        if 'data_access_resource' in newdoc.keys():
-            for e in newdoc['data_access_resource']:
-                #print('>>>>>e', e)
-                if (not nflg) and "OGC WMS" in (''.join(e)):
-                    tflg = True
-        # Skip file if not a level 2 file
-        if 'related_dataset' not in newdoc:
-            continue
-        mylog.info("Indexing dataset: %s", myfile)
-        # Ingest at level 2
-        mysolr.add_level2(mydoc.tosolr(), addThumbnail=tflg, projection=mapprojection, wmstimeout=120, wms_layer=wms_layer, wms_style=wms_style, wms_zoom_level=wms_zoom_level, add_coastlines=wms_coastlines, wms_timeout=cfg['wms-timeout'], thumbnail_extent=thumbnail_extent)
-        tflg = False
-
-    # Report status
-    mylog.info("Number of files processed were: %d", len(myfiles))
-
-    #add a commit to solr at end of run
-    mysolr.commit()
-
-
-if __name__ == "__main__":
-    main(sys.argv[1:])
