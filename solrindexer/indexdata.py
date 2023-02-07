@@ -1354,7 +1354,7 @@ class IndexMMD:
     def search(self):
         """ Require Id as input """
         try:
-            results = solr.search('mmd_title:Sea Ice Extent', df='text_en', rows=100)
+            results = pysolr.search('mmd_title:Sea Ice Extent', df='text_en', rows=100)
         except Exception as e:
             logger.error("Something failed during search: %s", str(e))
 

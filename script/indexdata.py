@@ -73,7 +73,7 @@ def main():
         logger.error("Something failed in parsing arguments: %s", str(e))
         return 1
 
-    tflg = l2flg = False
+    tflg = l2flg = nflg = False
     if args.level2:
         l2flg = True
 
@@ -266,9 +266,9 @@ def main():
         """ Do not search for metadata_identifier, always used id...  """
         """ Check if this can be used???? """
         newdoc = mydoc.tosolr()
+
         if 'data_access_resource' in newdoc.keys():
             for e in newdoc['data_access_resource']:
-                #print('>>>>>e', e)
                 if (not nflg) and "OGC WMS" in (''.join(e)):
                     tflg = True
         # Skip file if not a level 2 file
@@ -276,7 +276,10 @@ def main():
             continue
         logger.info("Indexing dataset: %s", myfile)
         # Ingest at level 2
-        mysolr.add_level2(mydoc.tosolr(), addThumbnail=tflg, projection=mapprojection, wmstimeout=120, wms_layer=wms_layer, wms_style=wms_style, wms_zoom_level=wms_zoom_level, add_coastlines=wms_coastlines, wms_timeout=cfg['wms-timeout'], thumbnail_extent=thumbnail_extent)
+        mysolr.add_level2(mydoc.tosolr(), addThumbnail=tflg, projection=mapprojection,
+        wmstimeout=120, wms_layer=wms_layer, wms_style=wms_style, wms_zoom_level=wms_zoom_level,
+        add_coastlines=wms_coastlines, wms_timeout=cfg['wms-timeout'],
+        thumbnail_extent=thumbnail_extent)
         tflg = False
 
     # Report status
