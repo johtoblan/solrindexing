@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: UTF-8 -*-
 """
 SOLR-indexer : Main indexer
 ===========================
@@ -59,6 +57,7 @@ from shapely.geometry import box, mapping
 
 logger = logging.getLogger(__name__)
 
+
 def getZones(lon, lat):
     "get UTM zone number from latitude and longitude"
     if lat >= 72.0 and lat < 84.0:
@@ -86,7 +85,7 @@ class MMD4SolR:
             with open(self.filename, encoding='utf-8') as fd:
                 self.mydoc = xmltodict.parse(fd.read())
         except Exception as e:
-            logger.error('Could not open file: %s',self.filename)
+            logger.error('Could not open file: %s; %s', self.filename, e)
             raise
 
     def check_mmd(self):
@@ -119,16 +118,18 @@ class MMD4SolR:
         """
         for requirement in mmd_requirements.keys():
             if requirement in self.mydoc['mmd:mmd']:
-                logger.info('\n\tChecking for: %s',requirement)
+                logger.info('Checking for: %s', requirement)
                 if requirement in self.mydoc['mmd:mmd']:
-                    if self.mydoc['mmd:mmd'][requirement] != None:
-                        logger.info('\n\t%s is present and non empty',requirement)
+                    if self.mydoc['mmd:mmd'][requirement] is not None:
+                        logger.info('%s is present and non empty', requirement)
                         mmd_requirements[requirement] = True
                     else:
-                        logger.warning('\n\tRequired element %s is missing, setting it to unknown',requirement)
+                        logger.warning('Required element %s is missing, setting it to unknown',
+                                       requirement)
                         self.mydoc['mmd:mmd'][requirement] = 'Unknown'
                 else:
-                    logger.warning('\n\tRequired element %s is missing, setting it to unknown.',requirement)
+                    logger.warning('Required element %s is missing, setting it to unknown.',
+                                   requirement)
                     self.mydoc['mmd:mmd'][requirement] = 'Unknown'
 
         """
@@ -183,27 +184,28 @@ class MMD4SolR:
                                     'Comprehensive quality control'],
         }
         for element in mmd_controlled_elements.keys():
-            logger.info('\n\tChecking %s\n\tfor compliance with controlled vocabulary', element)
+            logger.info('Checking %s for compliance with controlled vocabulary', element)
             if element in self.mydoc['mmd:mmd']:
 
                 if isinstance(self.mydoc['mmd:mmd'][element], list):
                     for elem in self.mydoc['mmd:mmd'][element]:
-                        if isinstance(elem,dict):
+                        if isinstance(elem, dict):
                             myvalue = elem['#text']
                         else:
                             myvalue = elem
                         if myvalue not in mmd_controlled_elements[element]:
                             if myvalue is not None:
-                                logger.warning('\n\t%s contains non valid content: \n\t\t%s', element, myvalue)
+                                logger.warning('%s contains non valid content: %s',
+                                               element, myvalue)
                             else:
                                 logger.warning('Discovered an empty element.')
                 else:
-                    if isinstance(self.mydoc['mmd:mmd'][element],dict):
+                    if isinstance(self.mydoc['mmd:mmd'][element], dict):
                         myvalue = self.mydoc['mmd:mmd'][element]['#text']
                     else:
                         myvalue = self.mydoc['mmd:mmd'][element]
                     if myvalue not in mmd_controlled_elements[element]:
-                        logger.warning('\n\t%s contains non valid content: \n\t\t%s', element, myvalue)
+                        logger.warning('%s contains non valid content: %s', element, myvalue)
 
         """
         Check that keywords also contain GCMD keywords
@@ -220,13 +222,13 @@ class MMD4SolR:
                     break
                 i += 1
             if not gcmd:
-                logger.warning('\n\tKeywords in GCMD are not available (a)')
+                logger.warning('Keywords in GCMD are not available (a)')
         else:
             if str(self.mydoc['mmd:mmd']['mmd:keywords']['@vocabulary']).upper() == 'GCMDSK':
                 gcmd = True
             else:
                 # warnings.warning('Keywords in GCMD are not available')
-                logger.warning('\n\tKeywords in GCMD are not available (b)')
+                logger.warning('Keywords in GCMD are not available (b)')
 
         """
         Modify dates if necessary
@@ -236,7 +238,7 @@ class MMD4SolR:
         """
         if 'mmd:last_metadata_update' in self.mydoc['mmd:mmd']:
             if isinstance(self.mydoc['mmd:mmd']['mmd:last_metadata_update'],
-                    dict):
+                          dict):
                 for mydict in self.mydoc['mmd:mmd']['mmd:last_metadata_update'].items():
                     if 'mmd:update' in mydict:
                         for myupdate in mydict:
@@ -245,7 +247,7 @@ class MMD4SolR:
                                 # The comparison below is a hack, need to
                                 # revisit later, but works for now.
                                 myvalue = '0000-00-00:T00:00:00Z'
-                                if isinstance(mydateels,list):
+                                if isinstance(mydateels, list):
                                     for mydaterec in mydateels:
                                         if mydaterec['mmd:datetime'] > myvalue:
                                             myvalue = mydaterec['mmd:datetime']
@@ -264,16 +266,13 @@ class MMD4SolR:
                 else:
                     myvalue = self.mydoc['mmd:mmd']['mmd:last_metadata_update']+'Z'
             mydate = dateutil.parser.parse(myvalue)
-            #self.mydoc['mmd:mmd']['mmd:last_metadata_update'] = mydate.strftime('%Y-%m-%dT%H:%M:%SZ')
         if 'mmd:temporal_extent' in self.mydoc['mmd:mmd']:
             if isinstance(self.mydoc['mmd:mmd']['mmd:temporal_extent'], list):
-                #print(self.mydoc['mmd:mmd']['mmd:temporal_extent'])
-                i=0
+
+                i = 0
                 for item in self.mydoc['mmd:mmd']['mmd:temporal_extent']:
-                    #print(i, item)
-                    for mykey in  item:
-                        #print('\t', mykey,item[mykey])
-                        if (item[mykey]==None) or (item[mykey]=='--'):
+                    for mykey in item:
+                        if (item[mykey] is None) or (item[mykey] == '--'):
                             mydate = ''
                             self.mydoc['mmd:mmd']['mmd:temporal_extent'][i][mykey] = mydate
                         else:
@@ -284,7 +283,7 @@ class MMD4SolR:
                 for mykey in self.mydoc['mmd:mmd']['mmd:temporal_extent']:
                     if mykey == '@xmlns:gml':
                         continue
-                    if (self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey] == None) or (self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey] == '--'):
+                    if (self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey] is None) or (self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey] == '--'):
                         mydate = ''
                         self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey] = mydate
                     else:
@@ -907,11 +906,6 @@ class MMD4SolR:
         encoded_xml_string = base64.b64encode(xml_string)
         xml_b64 = (encoded_xml_string).decode('utf-8')
         mydict['mmd_xml_file'] = xml_b64
-
-##        with open(self.mydoc['mmd:mmd']['mmd:metadata_identifier']+'.txt','w') as myfile:
-##            #pickle.dump(mydict,myfile)
-##            myjson = json.dumps(mydict)
-##            myfile.write(myjson)
 
         return mydict
 
