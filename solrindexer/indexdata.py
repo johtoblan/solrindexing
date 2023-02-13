@@ -252,21 +252,21 @@ class MMD4SolR:
         """
 
         # Defining Look Up Tables
-        personnel_role_LUT = {'Investigator':'investigator',
+        personnel_role_LUT = {'Investigator': 'investigator',
                               'Technical contact': 'technical',
                               'Metadata author': 'metadata_author',
-                              'Data center contact':'datacenter'
-                             }
-        related_information_LUT = {'Dataset landing page':'landing_page',
-                              'Users guide': 'user_guide',
-                              'Project home page': 'home_page',
-                              'Observation facility': 'obs_facility',
-                              'Extended metadata':'ext_metadata',
-                              'Scientific publication':'scientific_publication',
-                              'Data paper':'data_paper',
-                              'Data management plan':'data_management_plan',
-                              'Other documentation':'other_documentation',
-                             }
+                              'Data center contact': 'datacenter'
+                              }
+        related_information_LUT = {'Dataset landing page': 'landing_page',
+                                   'Users guide': 'user_guide',
+                                   'Project home page': 'home_page',
+                                   'Observation facility': 'obs_facility',
+                                   'Extended metadata': 'ext_metadata',
+                                   'Scientific publication': 'scientific_publication',
+                                   'Data paper': 'data_paper',
+                                   'Data management plan': 'data_management_plan',
+                                   'Other documentation': 'other_documentation',
+                                   }
 
         # Create OrderedDict which will contain all elements for SolR
         mydict = OrderedDict()
