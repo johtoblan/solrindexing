@@ -51,6 +51,7 @@ import matplotlib.pyplot as plt
 import shapely.geometry as shpgeo
 
 from collections import OrderedDict
+from metvocab.mmdgroup import MMDGroup
 from owslib.wms import WebMapService
 from shapely.geometry import box, mapping
 
@@ -132,79 +133,38 @@ class MMD4SolR:
                                    requirement)
                     self.mydoc['mmd:mmd'][requirement] = 'Unknown'
 
-        """
-        Check for correct vocabularies where necessary
-        Change to external files (SKOS), using embedded files for now
-        Should be collected from
-            https://github.com/steingod/scivocab/tree/master/metno
-        """
+        logger.info("Checking controlled vocabularies")
+        # Should be collected from
+        #    https://github.com/steingod/scivocab/tree/master/metno
+        #  Is fetched from vocab.met.no via https://github.com/metno/met-vocab-tools
+
+        mmd_iso_topic_category = MMDGroup('mmd', 'https://vocab.met.no/mmd/ISO_Topic_Category')
+        mmd_collection = MMDGroup('mmd', 'https://vocab.met.no/mmd/Collection_Keywords')
+        mmd_dataset_status = MMDGroup('mmd', 'https://vocab.met.no/mmd/Dataset_Production_Status')
+        mmd_quality_control = MMDGroup('mmd', 'https://vocab.met.no/mmd/Quality_Control')
         mmd_controlled_elements = {
-            'mmd:iso_topic_category': ['farming',
-                                       'biota',
-                                       'boundaries',
-                                       'climatologyMeteorologyAtmosphere',
-                                       'economy',
-                                       'elevation',
-                                       'environment',
-                                       'geoscientificInformation',
-                                       'health',
-                                       'imageryBaseMapsEarthCover',
-                                       'inlandWaters',
-                                       'location',
-                                       'oceans',
-                                       'planningCadastre',
-                                       'society',
-                                       'structure',
-                                       'transportation',
-                                       'utilitiesCommunication'],
-            'mmd:collection': ['ACCESS',
-                               'ADC',
-                               'AeN',
-                               'APPL',
-                               'CC',
-                               'DAM',
-                               'DOKI',
-                               'GCW',
-                               'NBS',
-                               'NMAP',
-                               'NMDC',
-                               'NSDN',
-                               'SIOS',
-                               'SESS_2018',
-                               'SESS_2019',
-                               'SIOS_access_programme',
-                               'YOPP'],
-            'mmd:dataset_production_status': ['Planned',
-                                              'In Work',
-                                              'Complete',
-                                              'Obsolete'],
-            'mmd:quality_control': ['No quality control',
-                                    'Basic quality control',
-                                    'Extended quality control',
-                                    'Comprehensive quality control'],
+            'mmd:iso_topic_category': mmd_iso_topic_category,
+            'mmd:collection': mmd_collection,
+            'mmd:dataset_production_status': mmd_dataset_status,
+            'mmd:quality_control': mmd_quality_control,
         }
         for element in mmd_controlled_elements.keys():
             logger.info('Checking %s for compliance with controlled vocabulary', element)
             if element in self.mydoc['mmd:mmd']:
-
                 if isinstance(self.mydoc['mmd:mmd'][element], list):
                     for elem in self.mydoc['mmd:mmd'][element]:
                         if isinstance(elem, dict):
                             myvalue = elem['#text']
                         else:
                             myvalue = elem
-                        if myvalue not in mmd_controlled_elements[element]:
-                            if myvalue is not None:
-                                logger.warning('%s contains non valid content: %s',
-                                               element, myvalue)
-                            else:
-                                logger.warning('Discovered an empty element.')
                 else:
                     if isinstance(self.mydoc['mmd:mmd'][element], dict):
                         myvalue = self.mydoc['mmd:mmd'][element]['#text']
                     else:
-                        myvalue = self.mydoc['mmd:mmd'][element]
-                    if myvalue not in mmd_controlled_elements[element]:
+                        myvalue = self.mydoc['mmd:mmd'].get('element', None)
+
+                if myvalue is not None:
+                    if mmd_controlled_elements[element].search(myvalue) is False:
                         logger.warning('%s contains non valid content: %s', element, myvalue)
 
         """
@@ -381,7 +341,7 @@ class MMD4SolR:
             if isinstance(self.mydoc['mmd:mmd']['mmd:collection'], list):
                 i = 0
                 for e in self.mydoc['mmd:mmd']['mmd:collection']:
-                    if isinstance(e,dict):
+                    if isinstance(e, dict):
                         mydict['collection'].append(e['#text'])
                     else:
                         mydict['collection'].append(e)
@@ -483,25 +443,17 @@ class MMD4SolR:
                     if float(e['mmd:rectangle']['mmd:north']) == float(e['mmd:rectangle']['mmd:south']):
                         if float(e['mmd:rectangle']['mmd:east']) == float(e['mmd:rectangle']['mmd:west']):
                             point = shpgeo.Point(float(e['mmd:rectangle']['mmd:east']),float(e['mmd:rectangle']['mmd:north']))
-                            #print(point.y)
                             mydict['polygon_rpt'] = point.wkt
 
                             print(mapping(point))
-                            #mydict['geom'] = geojson.dumps(mapping(point))
                     else:
                         bbox = box(min(lonvals), min(latvals), max(lonvals), max(latvals))
 
                         print("First conditition")
                         print(bbox)
                         polygon = bbox.wkt
-                        #p = shapely.geometry.polygon.orient(polygon, sign=1.0)
-                        #print(p.exterior.is_ccw)
                         mydict['polygon_rpt'] = polygon
 
-                        #print(mapping(polygon))
-                        #pGeo = shpgeo.shape({'type': 'polygon', 'coordinates': tuple(newCoord)})
-                        #mydict['geom'] = geojson.dumps(mapping(shapely.wkt.loads(polygon)))
-                        #print(mydict['geom'])
 
 
                 else:
@@ -530,30 +482,20 @@ class MMD4SolR:
                 mydict['bbox'] = "ENVELOPE("+self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:west']+","+self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:east']+","+ self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:north']+","+ self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:south']+")"
 
                 print("Second conditition")
-                #Check if we have a point or a boundingbox
+                #  Check if we have a point or a boundingbox
                 if float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:south']) == float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:north']):
                     if float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:east']) == float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:west']):
                         point = shpgeo.Point(float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:east']),float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:north']))
-                        #print(point.y)
                         mydict['polygon_rpt'] = point.wkt
 
                         print(mapping(point))
 
-                        #mydict['geom'] = geojson.dumps(mapping(point))
-
                 else:
                     bbox = box(float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:west']), float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:south']), float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:east']), float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:north']), ccw=False)
-                    #print(bbox)
                     polygon = bbox.wkt
                     print(polygon)
-                    #p = shapely.geometry.polygon.orient(shapely.wkt.loads(polygon), sign=1.0)
-                    #print(p.exterior.is_ccw)
                     mydict['polygon_rpt'] = polygon
-                    #print(mapping(shapely.wkt.loads(polygon)))
-                    #print(geojson.dumps(mapping(loads(polygon))))
-                    #pGeo = shpgeo.shape({'type': 'polygon', 'coordinates': tuple(newCoord)})
-                    #mydict['geom'] = geojson.dumps(mapping(p))
-                    #print(mydict['geom'])
+
 
         logger.info('Add location element?')
 
@@ -943,6 +885,7 @@ class IndexMMD:
     #Function for sending explicit commit to solr
     def commit(self):
         self.solrc.commit()
+
     def index_record(self, input_record, addThumbnail, level=None, wms_layer=None, wms_style=None, wms_zoom_level=0, add_coastlines=True, projection=ccrs.PlateCarree(), wms_timeout=120, thumbnail_extent=None):
         """ Add thumbnail to SolR
             Args:
@@ -1161,7 +1104,6 @@ class IndexMMD:
             logger.error('Invalid thumbnail type: {}'.format(thumbnail_type))
             return None
 
-
     def create_wms_thumbnail(self, url):
         """ Create a base64 encoded thumbnail by means of cartopy.
 
@@ -1274,6 +1216,7 @@ class IndexMMD:
 
     def create_ts_thumbnail(self):
         """ Create a base64 encoded thumbnail """
+        pass
 
     def get_feature_type(self, myopendap):
         """ Set feature type from OPeNDAP """
