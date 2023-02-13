@@ -56,6 +56,7 @@ from shapely.geometry import box, mapping
 
 
 logger = logging.getLogger(__name__)
+IDREPLS = [':', '/', '.']
 
 
 def getZones(lon, lat):
@@ -279,17 +280,16 @@ class MMD4SolR:
         # the correct one.
 
         logger.info("Identifier and metadata_identifier")
-        idrepls = [':', '/', '.']
         if isinstance(mmd['mmd:metadata_identifier'], dict):
             myid = mmd['mmd:metadata_identifier']['#text']
-            for e in idrepls:
+            for e in IDREPLS:
                 myid = myid.replace(e, '-')
             mydict['id'] = myid
             mydict['metadata_identifier'] = \
                 mmd['mmd:metadata_identifier']['#text']
         else:
             myid = mmd['mmd:metadata_identifier']
-            for e in idrepls:
+            for e in IDREPLS:
                 myid = myid.replace(e, '-')
             mydict['id'] = myid
             mydict['metadata_identifier'] = mmd['mmd:metadata_identifier']
@@ -650,14 +650,14 @@ class MMD4SolR:
                         if e['@mmd:relation_type'] == 'parent':
                             if '#text' in dict(e):
                                 mydict['related_dataset'] = e['#text']
-                                for e in idrepls:
+                                for e in IDREPLS:
                                     mydict['related_dataset'] = \
                                         mydict['related_dataset'].replace(e, '-')
             else:
                 # Not sure if this is used??
                 if '#text' in dict(mmd['mmd:related_dataset']):
                     mydict['related_dataset'] = mmd['mmd:related_dataset']['#text']
-                    for e in idrepls:
+                    for e in IDREPLS:
                         mydict['related_dataset'] = mydict['related_dataset'].replace(e, '-')
 
         logger.info("Storage information")
@@ -1046,8 +1046,7 @@ class IndexMMD:
 
         """ Retrieve level 1 record """
         myparid = myl2record['related_dataset']
-        idrepls = [':', '/', '.']
-        for e in idrepls:
+        for e in IDREPLS:
             myparid = myparid.replace(e, '-')
         try:
             myresults = self.solrc.search('id:' + myparid, **{'wt': 'python', 'rows': 100})
