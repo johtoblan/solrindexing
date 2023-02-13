@@ -50,7 +50,6 @@ import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
 import shapely.geometry as shpgeo
 
-from collections import OrderedDict
 from metvocab.mmdgroup import MMDGroup
 from owslib.wms import WebMapService
 from shapely.geometry import box, mapping
@@ -117,21 +116,22 @@ class MMD4SolR:
         Check for presence and non empty elements
         This must be further developed...
         """
+        mmd = self.mydoc['mmd:mmd']
         for requirement in mmd_requirements.keys():
-            if requirement in self.mydoc['mmd:mmd']:
+            if requirement in mmd:
                 logger.info('Checking for: %s', requirement)
-                if requirement in self.mydoc['mmd:mmd']:
-                    if self.mydoc['mmd:mmd'][requirement] is not None:
+                if requirement in mmd:
+                    if mmd[requirement] is not None:
                         logger.info('%s is present and non empty', requirement)
                         mmd_requirements[requirement] = True
                     else:
                         logger.warning('Required element %s is missing, setting it to unknown',
                                        requirement)
-                        self.mydoc['mmd:mmd'][requirement] = 'Unknown'
+                        mmd[requirement] = 'Unknown'
                 else:
                     logger.warning('Required element %s is missing, setting it to unknown.',
                                    requirement)
-                    self.mydoc['mmd:mmd'][requirement] = 'Unknown'
+                    mmd[requirement] = 'Unknown'
 
         logger.info("Checking controlled vocabularies")
         # Should be collected from
@@ -150,18 +150,18 @@ class MMD4SolR:
         }
         for element in mmd_controlled_elements.keys():
             logger.info('Checking %s for compliance with controlled vocabulary', element)
-            if element in self.mydoc['mmd:mmd']:
-                if isinstance(self.mydoc['mmd:mmd'][element], list):
-                    for elem in self.mydoc['mmd:mmd'][element]:
+            if element in mmd:
+                if isinstance(mmd[element], list):
+                    for elem in mmd[element]:
                         if isinstance(elem, dict):
                             myvalue = elem['#text']
                         else:
                             myvalue = elem
                 else:
-                    if isinstance(self.mydoc['mmd:mmd'][element], dict):
-                        myvalue = self.mydoc['mmd:mmd'][element]['#text']
+                    if isinstance(mmd[element], dict):
+                        myvalue = mmd[element]['#text']
                     else:
-                        myvalue = self.mydoc['mmd:mmd'].get('element', None)
+                        myvalue = mmd.get('element', None)
 
                 if myvalue is not None:
                     if mmd_controlled_elements[element].search(myvalue) is False:
@@ -172,15 +172,15 @@ class MMD4SolR:
         Need to check contents more specifically...
         """
         gcmd = False
-        if isinstance(self.mydoc['mmd:mmd']['mmd:keywords'], list):
-            for elem in self.mydoc['mmd:mmd']['mmd:keywords']:
+        if isinstance(mmd['mmd:keywords'], list):
+            for elem in mmd['mmd:keywords']:
                 if str(elem['@vocabulary']).upper() == 'GCMDSK':
                     gcmd = True
                     break
             if not gcmd:
                 logger.warning('Keywords in GCMD are not available (a)')
         else:
-            if str(self.mydoc['mmd:mmd']['mmd:keywords']['@vocabulary']).upper() != 'GCMDSK':
+            if str(mmd['mmd:keywords']['@vocabulary']).upper() != 'GCMDSK':
                 logger.warning('Keywords in GCMD are not available (b)')
 
         """
@@ -189,10 +189,10 @@ class MMD4SolR:
         extracted as SolR is not adapted.
         FIXME and check
         """
-        if 'mmd:last_metadata_update' in self.mydoc['mmd:mmd']:
-            if isinstance(self.mydoc['mmd:mmd']['mmd:last_metadata_update'],
+        if 'mmd:last_metadata_update' in mmd:
+            if isinstance(mmd['mmd:last_metadata_update'],
                           dict):
-                for mydict in self.mydoc['mmd:mmd']['mmd:last_metadata_update'].items():
+                for mydict in mmd['mmd:last_metadata_update'].items():
                     if 'mmd:update' in mydict:
                         for myupdate in mydict:
                             if 'mmd:update' not in myupdate:
@@ -214,14 +214,14 @@ class MMD4SolR:
                 # To be removed when all records are transformed into the
                 # new format
                 logger.warning('Removed D7 format in last_metadata_update')
-                if self.mydoc['mmd:mmd']['mmd:last_metadata_update'].endswith('Z'):
-                    myvalue = self.mydoc['mmd:mmd']['mmd:last_metadata_update']
+                if mmd['mmd:last_metadata_update'].endswith('Z'):
+                    myvalue = mmd['mmd:last_metadata_update']
                 else:
-                    myvalue = self.mydoc['mmd:mmd']['mmd:last_metadata_update']+'Z'
+                    myvalue = mmd['mmd:last_metadata_update']+'Z'
             mydate = dateutil.parser.parse(myvalue)
-        if 'mmd:temporal_extent' in self.mydoc['mmd:mmd']:
-            if isinstance(self.mydoc['mmd:mmd']['mmd:temporal_extent'], list):
-                for item in self.mydoc['mmd:mmd']['mmd:temporal_extent']:
+        if 'mmd:temporal_extent' in mmd:
+            if isinstance(mmd['mmd:temporal_extent'], list):
+                for item in mmd['mmd:temporal_extent']:
                     for mykey in item:
                         if (item[mykey] is None) or (item[mykey] == '--'):
                             mydate = ''
@@ -231,16 +231,16 @@ class MMD4SolR:
                             item[mykey] = mydate.strftime('%Y-%m-%dT%H:%M:%SZ')
 
             else:
-                for mykey, myitem in self.mydoc['mmd:mmd']['mmd:temporal_extent'].items():
+                for mykey, myitem in mmd['mmd:temporal_extent'].items():
                     if mykey == '@xmlns:gml':
                         continue
                     if (myitem is None) or (myitem == '--'):
                         mydate = ''
-                        self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey].set(mydate)
+                        mmd['mmd:temporal_extent'][mykey].set(mydate)
                     else:
                         try:
                             mydate = dateutil.parser.parse(str(myitem))
-                            self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey] = \
+                            mmd['mmd:temporal_extent'][mykey] = \
                                 mydate.strftime('%Y-%m-%dT%H:%M:%SZ')
                         except Exception as e:
                             logger.error('Date format could not be parsed: %s', e)
@@ -268,84 +268,83 @@ class MMD4SolR:
                                    'Other documentation': 'other_documentation',
                                    }
 
-        # Create OrderedDict which will contain all elements for SolR
-        mydict = OrderedDict()
+        # As of python 3.6 Dictionaries are ordered by insertion (as OrderedDict)
+        mydict = {}
 
-        # SolR Can't use the mmd:metadata_identifier as identifier if it contains :, replace : and other characters like / etc by _ in the id field, let metadata_identifier be the correct one.
+        # Cheeky shorthand
+        mmd = self.mydoc['mmd:mmd']
 
-        """ Identifier """
-        idrepls = [':','/','.']
-        if isinstance(self.mydoc['mmd:mmd']['mmd:metadata_identifier'],dict):
-            myid = self.mydoc['mmd:mmd']['mmd:metadata_identifier']['#text']
+        # SolR Can't use the mmd:metadata_identifier as identifier if it contains :, replace :
+        # and other characters like / etc by _ in the id field, let metadata_identifier be
+        # the correct one.
+
+        logger.info("Identifier and metadata_identifier")
+        idrepls = [':', '/', '.']
+        if isinstance(mmd['mmd:metadata_identifier'], dict):
+            myid = mmd['mmd:metadata_identifier']['#text']
             for e in idrepls:
-                myid = myid.replace(e,'-')
+                myid = myid.replace(e, '-')
             mydict['id'] = myid
-            mydict['metadata_identifier'] = self.mydoc['mmd:mmd']['mmd:metadata_identifier']['#text']
+            mydict['metadata_identifier'] = \
+                mmd['mmd:metadata_identifier']['#text']
         else:
-            myid = self.mydoc['mmd:mmd']['mmd:metadata_identifier']
+            myid = mmd['mmd:metadata_identifier']
             for e in idrepls:
-                myid = myid.replace(e,'-')
+                myid = myid.replace(e, '-')
             mydict['id'] = myid
-            mydict['metadata_identifier'] = self.mydoc['mmd:mmd']['mmd:metadata_identifier']
+            mydict['metadata_identifier'] = mmd['mmd:metadata_identifier']
 
-        """ Last metadata update """
-        if 'mmd:last_metadata_update' in self.mydoc['mmd:mmd']:
-            last_metadata_update = self.mydoc['mmd:mmd']['mmd:last_metadata_update']
-
+        logger.info("Last metadata update")
+        if 'mmd:last_metadata_update' in mmd:
+            last_metadata_update = mmd['mmd:last_metadata_update']
             lmu_datetime = []
             lmu_type = []
             lmu_note = []
             # FIXME check if this works correctly
-            if isinstance(last_metadata_update['mmd:update'], dict): #Only one last_metadata_update element
-                    lmu_datetime.append(str(last_metadata_update['mmd:update']['mmd:datetime']))
-                    lmu_type.append(last_metadata_update['mmd:update']['mmd:type'])
-                    lmu_note.append(last_metadata_update['mmd:update']['mmd:note'])
-
-            else: # multiple last_metadata_update elements
-                for i,e in enumerate(last_metadata_update['mmd:update']):
+            # Only one last_metadata_update element
+            if isinstance(last_metadata_update['mmd:update'], dict):
+                lmu_datetime.append(str(last_metadata_update['mmd:update']['mmd:datetime']))
+                lmu_type.append(last_metadata_update['mmd:update']['mmd:type'])
+                lmu_note.append(last_metadata_update['mmd:update'].get('mmd:note', ''))
+            # Multiple last_metadata_update elements
+            else:
+                for i, e in enumerate(last_metadata_update['mmd:update']):
                     lmu_datetime.append(str(e['mmd:datetime']))
                     lmu_type.append(e['mmd:type'])
                     if 'mmd:note' in e.keys():
                         lmu_note.append(e['mmd:note'])
 
-            i = 0
-            for myel in lmu_datetime:
-                i+=1
+            for i, myel in enumerate(lmu_datetime):
                 if myel.endswith('Z'):
                     continue
                 else:
                     lmu_datetime[i-1] = myel+'Z'
+
             mydict['last_metadata_update_datetime'] = lmu_datetime
             mydict['last_metadata_update_type'] = lmu_type
             mydict['last_metadata_update_note'] = lmu_note
 
-        """ Metadata status """
-        if isinstance(self.mydoc['mmd:mmd']['mmd:metadata_status'],dict):
-            mydict['metadata_status'] = self.mydoc['mmd:mmd']['mmd:metadata_status']['#text']
+        logger.info("Metadata status")
+        if isinstance(mmd['mmd:metadata_status'], dict):
+            mydict['metadata_status'] = mmd['mmd:metadata_status']['#text']
         else:
-            mydict['metadata_status'] = self.mydoc['mmd:mmd']['mmd:metadata_status']
-        # TODO: the string below [title, abstract, etc ...]
-        #  should be comments or some sort of logging statments
+            mydict['metadata_status'] = mmd['mmd:metadata_status']
 
-        """ Collection """
-        if 'mmd:collection' in self.mydoc['mmd:mmd']:
+        logger.info("Collection")
+        if 'mmd:collection' in mmd:
             mydict['collection'] = []
-            if isinstance(self.mydoc['mmd:mmd']['mmd:collection'], list):
-                i = 0
-                for e in self.mydoc['mmd:mmd']['mmd:collection']:
+            if isinstance(mmd['mmd:collection'], list):
+                for e in mmd['mmd:collection']:
                     if isinstance(e, dict):
                         mydict['collection'].append(e['#text'])
                     else:
                         mydict['collection'].append(e)
-                    i += 1
             else:
-                mydict['collection'] = self.mydoc['mmd:mmd']['mmd:collection']
+                mydict['collection'] = mmd['mmd:collection']
 
-        """ title """
-        if isinstance(self.mydoc['mmd:mmd']['mmd:title'], list):
-            i = 0
-            # Switch to using e instead of self.mydoc...
-            for e in self.mydoc['mmd:mmd']['mmd:title']:
+        logger.info("Title")
+        if isinstance(mmd['mmd:title'], list):
+            for e in mmd['mmd:title']:
                 if '@xml:lang' in e:
                     if e['@xml:lang'] == 'en':
                         mydict['title'] = e['#text']
@@ -353,19 +352,19 @@ class MMD4SolR:
                     if e['@lang'] == 'en':
                         mydict['title'] = e['#text']
         else:
-            if isinstance(self.mydoc['mmd:mmd']['mmd:title'],dict):
-                if '@xml:lang' in self.mydoc['mmd:mmd']['mmd:title']:
-                    if self.mydoc['mmd:mmd']['mmd:title']['@xml:lang'] == 'en':
-                        mydict['title'] = self.mydoc['mmd:mmd']['mmd:title']['#text']
-                if '@lang' in self.mydoc['mmd:mmd']['mmd:title']:
-                    if self.mydoc['mmd:mmd']['mmd:title']['@lang'] == 'en':
-                        mydict['title'] = self.mydoc['mmd:mmd']['mmd:title']['#text']
+            if isinstance(mmd['mmd:title'], dict):
+                if '@xml:lang' in mmd['mmd:title']:
+                    if mmd['mmd:title']['@xml:lang'] == 'en':
+                        mydict['title'] = mmd['mmd:title']['#text']
+                if '@lang' in mmd['mmd:title']:
+                    if mmd['mmd:title']['@lang'] == 'en':
+                        mydict['title'] = mmd['mmd:title']['#text']
             else:
-                mydict['title'] = str(self.mydoc['mmd:mmd']['mmd:title'])
+                mydict['title'] = str(mmd['mmd:title'])
 
-        """ abstract """
-        if isinstance(self.mydoc['mmd:mmd']['mmd:abstract'], list):
-            for e in self.mydoc['mmd:mmd']['mmd:abstract']:
+        logger.info("Abstract")
+        if isinstance(mmd['mmd:abstract'], list):
+            for e in mmd['mmd:abstract']:
                 if '@xml:lang' in e:
                     if e['@xml:lang'] == 'en':
                         mydict['abstract'] = e['#text']
@@ -373,25 +372,25 @@ class MMD4SolR:
                     if e['@lang'] == 'en':
                         mydict['abstract'] = e['#text']
         else:
-            if isinstance(self.mydoc['mmd:mmd']['mmd:abstract'],dict):
-                if '@xml:lang' in self.mydoc['mmd:mmd']['mmd:abstract']:
-                    if self.mydoc['mmd:mmd']['mmd:abstract']['@xml:lang'] == 'en':
-                        mydict['abstract'] = self.mydoc['mmd:mmd']['mmd:abstract']['#text']
-                if '@lang' in self.mydoc['mmd:mmd']['mmd:abstract']:
-                    if self.mydoc['mmd:mmd']['mmd:abstract']['@lang'] == 'en':
-                        mydict['abstract'] = self.mydoc['mmd:mmd']['mmd:abstract']['#text']
+            if isinstance(mmd['mmd:abstract'], dict):
+                if '@xml:lang' in mmd['mmd:abstract']:
+                    if mmd['mmd:abstract']['@xml:lang'] == 'en':
+                        mydict['abstract'] = mmd['mmd:abstract']['#text']
+                if '@lang' in mmd['mmd:abstract']:
+                    if mmd['mmd:abstract']['@lang'] == 'en':
+                        mydict['abstract'] = mmd['mmd:abstract']['#text']
             else:
-                mydict['abstract'] = str(self.mydoc['mmd:mmd']['mmd:abstract'])
+                mydict['abstract'] = str(mmd['mmd:abstract'])
 
-        """ Temporal extent """
-        if 'mmd:temporal_extent' in self.mydoc['mmd:mmd']:
-            if isinstance(self.mydoc['mmd:mmd']['mmd:temporal_extent'], list):
+        logger.info("Temporal extent")
+        if 'mmd:temporal_extent' in mmd:
+            if isinstance(mmd['mmd:temporal_extent'], list):
                 maxtime = dateutil.parser.parse('1000-01-01T00:00:00Z')
                 mintime = dateutil.parser.parse('2099-01-01T00:00:00Z')
-                for item in self.mydoc['mmd:mmd']['mmd:temporal_extent']:
-                    for mykey in item:
-                        if item[mykey] != '':
-                            mytime = dateutil.parser.parse(item[mykey])
+                for item in mmd['mmd:temporal_extent']:
+                    for myval in item.values():
+                        if myval != '':
+                            mytime = dateutil.parser.parse(myval)
                         if mytime < mintime:
                             mintime = mytime
                         if mytime > maxtime:
@@ -400,29 +399,30 @@ class MMD4SolR:
                 mydict['temporal_extent_end_date'] = maxtime.strftime('%Y-%m-%dT%H:%M:%SZ')
             else:
                 mydict["temporal_extent_start_date"] = str(
-                    self.mydoc['mmd:mmd']['mmd:temporal_extent']['mmd:start_date']),
-                if 'mmd:end_date' in self.mydoc['mmd:mmd']['mmd:temporal_extent']:
-                    if self.mydoc['mmd:mmd']['mmd:temporal_extent']['mmd:end_date']!=None:
+                    mmd['mmd:temporal_extent']['mmd:start_date'])
+                if 'mmd:end_date' in mmd['mmd:temporal_extent']:
+                    if mmd['mmd:temporal_extent']['mmd:end_date'] is not None:
                         mydict["temporal_extent_end_date"] = str(
-                            self.mydoc['mmd:mmd']['mmd:temporal_extent']['mmd:end_date']),
+                            mmd['mmd:temporal_extent']['mmd:end_date'])
 
-        """ Geographical extent """
-        """ Assumes longitudes positive eastwards and in the are -180:180
-        """
-        if 'mmd:geographic_extent' in self.mydoc['mmd:mmd'] and self.mydoc['mmd:mmd']['mmd:geographic_extent'] != None:
-            if isinstance(self.mydoc['mmd:mmd']['mmd:geographic_extent'],
-                    list):
-                logger.warning('This is a challenge as multiple bounding boxes are not supported in MMD yet, flattening information')
+        logger.info("Geographical extent")
+        # Assumes longitudes positive eastwards and in the are -180:180
+        mmd_geographic_extent = mmd.get('mmd:geographic_excent', None)
+        if mmd_geographic_extent is not None:
+            if isinstance(mmd_geographic_extent, list):
+                logger.warning('This is a challenge as multiple bounding boxes are not ' +
+                               'supported in MMD yet, flattening information')
                 latvals = []
                 lonvals = []
-                for e in self.mydoc['mmd:mmd']['mmd:geographic_extent']:
-                    if e['mmd:rectangle']['mmd:north'] != None:
+                # Point or boundingbox check is only done on last item in mmd_geographic_extent
+                for e in mmd_geographic_extent:
+                    if e['mmd:rectangle']['mmd:north'] is not None:
                         latvals.append(float(e['mmd:rectangle']['mmd:north']))
-                    if e['mmd:rectangle']['mmd:south'] != None:
+                    if e['mmd:rectangle']['mmd:south'] is not None:
                         latvals.append(float(e['mmd:rectangle']['mmd:south']))
-                    if e['mmd:rectangle']['mmd:east'] != None:
+                    if e['mmd:rectangle']['mmd:east'] is not None:
                         lonvals.append(float(e['mmd:rectangle']['mmd:east']))
-                    if e['mmd:rectangle']['mmd:west'] != None:
+                    if e['mmd:rectangle']['mmd:west'] is not None:
                         lonvals.append(float(e['mmd:rectangle']['mmd:west']))
 
                 if len(latvals) > 0 and len(lonvals) > 0:
@@ -430,23 +430,22 @@ class MMD4SolR:
                     mydict['geographic_extent_rectangle_south'] = min(latvals)
                     mydict['geographic_extent_rectangle_west'] = min(lonvals)
                     mydict['geographic_extent_rectangle_east'] = max(lonvals)
-                    mydict['bbox'] = "ENVELOPE("+str(min(lonvals))+","+str(max(lonvals))+","+ str(max(latvals))+","+str(min(latvals))+")"
-                    #Check if we have a point or a boundingbox
+                    mydict['bbox'] = "ENVELOPE("+str(min(lonvals))+","+str(max(lonvals))+"," +\
+                        str(max(latvals))+","+str(min(latvals))+")"
+
+                    # Check if we have a point or a boundingbox
                     if float(e['mmd:rectangle']['mmd:north']) == float(e['mmd:rectangle']['mmd:south']):
                         if float(e['mmd:rectangle']['mmd:east']) == float(e['mmd:rectangle']['mmd:west']):
-                            point = shpgeo.Point(float(e['mmd:rectangle']['mmd:east']),float(e['mmd:rectangle']['mmd:north']))
+                            point = shpgeo.Point(float(e['mmd:rectangle']['mmd:east']),
+                                                 float(e['mmd:rectangle']['mmd:north']))
                             mydict['polygon_rpt'] = point.wkt
-
-                            print(mapping(point))
+                            logger.info(mapping(point))
                     else:
                         bbox = box(min(lonvals), min(latvals), max(lonvals), max(latvals))
-
-                        print("First conditition")
-                        print(bbox)
+                        logger.info("First conditition")
+                        logger.info(bbox)
                         polygon = bbox.wkt
                         mydict['polygon_rpt'] = polygon
-
-
 
                 else:
                     mydict['geographic_extent_rectangle_north'] = 90.
@@ -454,79 +453,75 @@ class MMD4SolR:
                     mydict['geographic_extent_rectangle_west'] = -180.
                     mydict['geographic_extent_rectangle_east'] = 180.
             else:
-                for item in self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']:
-                    #print(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle'][item])
-                    if self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle'][item] == None:
+                for item in mmd_geographic_extent['mmd:rectangle'].values:
+                    if item is None:
                         logger.warning('Missing geographical element, will not process the file.')
                         mydict['metadata_status'] = 'Inactive'
                         raise Warning('Missing spatial bounds')
 
-                mydict['geographic_extent_rectangle_north'] = float(
-                    self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:north']),
-                mydict['geographic_extent_rectangle_south'] = float(
-                    self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:south']),
-                mydict['geographic_extent_rectangle_east'] = float(
-                    self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:east']),
-                mydict['geographic_extent_rectangle_west'] = float(
-                    self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:west']),
-                if '@srsName' in self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle'].keys():
-                    mydict['geographic_extent_rectangle_srsName'] = self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['@srsName'],
-                mydict['bbox'] = "ENVELOPE("+self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:west']+","+self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:east']+","+ self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:north']+","+ self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:south']+")"
+                north = float(mmd_geographic_extent['mmd:rectangle']['mmd:north'])
+                south = float(mmd_geographic_extent['mmd:rectangle']['mmd:south'])
+                east = float(mmd_geographic_extent['mmd:rectangle']['mmd:east'])
+                west = float(mmd_geographic_extent['mmd:rectangle']['mmd:west'])
+                mydict['geographic_extent_rectangle_north'] = north
+                mydict['geographic_extent_rectangle_south'] = south
+                mydict['geographic_extent_rectangle_east'] = east
+                mydict['geographic_extent_rectangle_west'] = west
+                srsname = mmd_geographic_extent['mmd:rectangle'].get('@srsName', None)
+                if srsname is not None:
+                    mydict['geographic_extent_rectangle_srsName'] = srsname
 
-                print("Second conditition")
+                mydict['bbox'] = "ENVELOPE("+west + "," + east + "," + north + "," + south + ")"
+
+                logger.info("Second conditition")
                 #  Check if we have a point or a boundingbox
-                if float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:south']) == float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:north']):
-                    if float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:east']) == float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:west']):
-                        point = shpgeo.Point(float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:east']),float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:north']))
+                if south == north:
+                    if east == west:
+                        point = shpgeo.Point(east, north)
                         mydict['polygon_rpt'] = point.wkt
-
-                        print(mapping(point))
+                        logger.info(mapping(point))
 
                 else:
-                    bbox = box(float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:west']), float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:south']), float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:east']), float(self.mydoc['mmd:mmd']['mmd:geographic_extent']['mmd:rectangle']['mmd:north']), ccw=False)
+                    bbox = box(west, south, east, north, ccw=False)
                     polygon = bbox.wkt
-                    print(polygon)
+                    logger.info(polygon)
                     mydict['polygon_rpt'] = polygon
 
-
-        logger.info('Add location element?')
-
-        """ Dataset production status """
-        if 'mmd:dataset_production_status' in self.mydoc['mmd:mmd']:
-            if isinstance(self.mydoc['mmd:mmd']['mmd:dataset_production_status'],
-                    dict):
-                mydict['dataset_production_status'] = self.mydoc['mmd:mmd']['mmd:dataset_production_status']['#text']
+        logger.info("Dataset production status")
+        if 'mmd:dataset_production_status' in mmd:
+            if isinstance(mmd['mmd:dataset_production_status'], dict):
+                mydict['dataset_production_status'] = mmd['mmd:dataset_production_status']['#text']
             else:
-                mydict['dataset_production_status'] = str(self.mydoc['mmd:mmd']['mmd:dataset_production_status'])
+                mydict['dataset_production_status'] = str(mmd['mmd:dataset_production_status'])
 
-        """ Dataset language """
-        if 'mmd:dataset_language' in self.mydoc['mmd:mmd']:
-            mydict['dataset_language'] = str(self.mydoc['mmd:mmd']['mmd:dataset_language'])
+        logger.info("Dataset language")
+        if 'mmd:dataset_language' in mmd:
+            mydict['dataset_language'] = str(mmd['mmd:dataset_language'])
 
         """ Operational status """
-        if 'mmd:operational_status' in self.mydoc['mmd:mmd']:
-            mydict['operational_status'] = str(self.mydoc['mmd:mmd']['mmd:operational_status'])
+        if 'mmd:operational_status' in mmd:
+            mydict['operational_status'] = str(mmd['mmd:operational_status'])
 
         """ Access constraints """
-        if 'mmd:access_constraint' in self.mydoc['mmd:mmd']:
-            mydict['access_constraint'] = str(self.mydoc['mmd:mmd']['mmd:access_constraint'])
+        if 'mmd:access_constraint' in mmd:
+            mydict['access_constraint'] = str(mmd['mmd:access_constraint'])
 
         """ Use constraint """
-        if 'mmd:use_constraint' in self.mydoc['mmd:mmd'] and self.mydoc['mmd:mmd']['mmd:use_constraint'] != None:
+        if 'mmd:use_constraint' in mmd and mmd['mmd:use_constraint'] != None:
             # Need both identifier and resource for use constraint
-            if 'mmd:identifier' in self.mydoc['mmd:mmd']['mmd:use_constraint'] and 'mmd:resource' in self.mydoc['mmd:mmd']['mmd:use_constraint']:
-                mydict['use_constraint_identifier'] = str(self.mydoc['mmd:mmd']['mmd:use_constraint']['mmd:identifier'])
-                mydict['use_constraint_resource'] = str(self.mydoc['mmd:mmd']['mmd:use_constraint']['mmd:resource'])
+            if 'mmd:identifier' in mmd['mmd:use_constraint'] and 'mmd:resource' in mmd['mmd:use_constraint']:
+                mydict['use_constraint_identifier'] = str(mmd['mmd:use_constraint']['mmd:identifier'])
+                mydict['use_constraint_resource'] = str(mmd['mmd:use_constraint']['mmd:resource'])
             else:
                 logger.warning('Both license identifier and resource need to be present to index this properly')
                 mydict['use_constraint_identifier'] =  "Not provided"
                 mydict['use_constraint_resource'] =  "Not provided"
-            if 'mmd:license_text' in self.mydoc['mmd:mmd']['mmd:use_constraint']:
-                mydict['use_constraint_license_text'] = str(self.mydoc['mmd:mmd']['mmd:use_constraint']['mmd:license_text'])
+            if 'mmd:license_text' in mmd['mmd:use_constraint']:
+                mydict['use_constraint_license_text'] = str(mmd['mmd:use_constraint']['mmd:license_text'])
 
         """ Personnel """
-        if 'mmd:personnel' in self.mydoc['mmd:mmd']:
-            personnel_elements = self.mydoc['mmd:mmd']['mmd:personnel']
+        if 'mmd:personnel' in mmd:
+            personnel_elements = mmd['mmd:personnel']
 
             if isinstance(personnel_elements, dict): #Only one element
                 personnel_elements = [personnel_elements] # make it an iterable list
@@ -583,9 +578,9 @@ class MMD4SolR:
                             mydict['personnel_{}_{}'.format(personnel_role_LUT[role], entry_type)].append(personnel[entry])
 
         """ Data center """
-        if 'mmd:data_center' in self.mydoc['mmd:mmd']:
+        if 'mmd:data_center' in mmd:
 
-            data_center_elements = self.mydoc['mmd:mmd']['mmd:data_center']
+            data_center_elements = mmd['mmd:data_center']
 
             if isinstance(data_center_elements, dict): #Only one element
                 data_center_elements = [data_center_elements] # make it an iterable list
@@ -610,8 +605,8 @@ class MMD4SolR:
 
         """ Data access """
         # NOTE: This is identical to method above. Should in future versions be implified as a method
-        if 'mmd:data_access' in self.mydoc['mmd:mmd']:
-            data_access_elements = self.mydoc['mmd:mmd']['mmd:data_access']
+        if 'mmd:data_access' in mmd:
+            data_access_elements = mmd['mmd:data_access']
 
             if isinstance(data_access_elements, dict): #Only one element
                 data_access_elements = [data_access_elements] # make it an iterable list
@@ -632,12 +627,12 @@ class MMD4SolR:
             Added handling of namespace in identifiers
         """
         self.parent = None
-        if 'mmd:related_dataset' in self.mydoc['mmd:mmd']:
+        if 'mmd:related_dataset' in mmd:
             idrepls = [':','/','.']
-            if isinstance(self.mydoc['mmd:mmd']['mmd:related_dataset'],
+            if isinstance(mmd['mmd:related_dataset'],
                     list):
                 logger.warning('Too many fields in related_dataset...')
-                for e in self.mydoc['mmd:mmd']['mmd:related_dataset']:
+                for e in mmd['mmd:related_dataset']:
                     if '@mmd:relation_type' in e:
                         if e['@mmd:relation_type'] == 'parent':
                             if '#text' in dict(e):
@@ -646,37 +641,37 @@ class MMD4SolR:
                                     mydict['related_dataset'] = mydict['related_dataset'].replace(e,'-')
             else:
                 """ Not sure if this is used?? """
-                if '#text' in dict(self.mydoc['mmd:mmd']['mmd:related_dataset']):
-                    mydict['related_dataset'] = self.mydoc['mmd:mmd']['mmd:related_dataset']['#text']
+                if '#text' in dict(mmd['mmd:related_dataset']):
+                    mydict['related_dataset'] = mmd['mmd:related_dataset']['#text']
                     for e in idrepls:
                         mydict['related_dataset'] = mydict['related_dataset'].replace(e,'-')
 
         """ Storage information """
-        if 'mmd:storage_information' in self.mydoc['mmd:mmd'] and self.mydoc['mmd:mmd']['mmd:storage_information'] != None:
-            if 'mmd:file_name' in self.mydoc['mmd:mmd']['mmd:storage_information'] and self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:file_name'] != None:
-                mydict['storage_information_file_name'] = str(self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:file_name'])
-            if 'mmd:file_location' in self.mydoc['mmd:mmd']['mmd:storage_information'] and self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:file_location'] != None:
-                mydict['storage_information_file_location'] = str(self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:file_location'])
-            if 'mmd:file_format' in self.mydoc['mmd:mmd']['mmd:storage_information'] and self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:file_format'] != None:
-                mydict['storage_information_file_format'] = str(self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:file_format'])
-            if 'mmd:file_size' in self.mydoc['mmd:mmd']['mmd:storage_information'] and self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:file_size'] != None:
-                if isinstance(self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:file_size'], dict):
-                    mydict['storage_information_file_size'] = str(self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:file_size']['#text'])
-                    mydict['storage_information_file_size_unit'] = str(self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:file_size']['@unit'])
+        if 'mmd:storage_information' in mmd and mmd['mmd:storage_information'] != None:
+            if 'mmd:file_name' in mmd['mmd:storage_information'] and mmd['mmd:storage_information']['mmd:file_name'] != None:
+                mydict['storage_information_file_name'] = str(mmd['mmd:storage_information']['mmd:file_name'])
+            if 'mmd:file_location' in mmd['mmd:storage_information'] and mmd['mmd:storage_information']['mmd:file_location'] != None:
+                mydict['storage_information_file_location'] = str(mmd['mmd:storage_information']['mmd:file_location'])
+            if 'mmd:file_format' in mmd['mmd:storage_information'] and mmd['mmd:storage_information']['mmd:file_format'] != None:
+                mydict['storage_information_file_format'] = str(mmd['mmd:storage_information']['mmd:file_format'])
+            if 'mmd:file_size' in mmd['mmd:storage_information'] and mmd['mmd:storage_information']['mmd:file_size'] != None:
+                if isinstance(mmd['mmd:storage_information']['mmd:file_size'], dict):
+                    mydict['storage_information_file_size'] = str(mmd['mmd:storage_information']['mmd:file_size']['#text'])
+                    mydict['storage_information_file_size_unit'] = str(mmd['mmd:storage_information']['mmd:file_size']['@unit'])
                 else:
                     logger.warning("Filesize unit not specified, skipping field")
-            if 'mmd:checksum' in self.mydoc['mmd:mmd']['mmd:storage_information'] and self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:checksum'] != None:
-                if isinstance(self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:checksum'], dict):
-                    mydict['storage_information_file_checksum'] = str(self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:checksum']['#text'])
-                    mydict['storage_information_file_checksum_type'] = str(self.mydoc['mmd:mmd']['mmd:storage_information']['mmd:checksum']['@type'])
+            if 'mmd:checksum' in mmd['mmd:storage_information'] and mmd['mmd:storage_information']['mmd:checksum'] != None:
+                if isinstance(mmd['mmd:storage_information']['mmd:checksum'], dict):
+                    mydict['storage_information_file_checksum'] = str(mmd['mmd:storage_information']['mmd:checksum']['#text'])
+                    mydict['storage_information_file_checksum_type'] = str(mmd['mmd:storage_information']['mmd:checksum']['@type'])
                 else:
                     logger.warning("Checksum type is not specified, skipping field")
 
 
         """ Related information """
-        if 'mmd:related_information' in self.mydoc['mmd:mmd']:
+        if 'mmd:related_information' in mmd:
 
-            related_information_elements = self.mydoc['mmd:mmd']['mmd:related_information']
+            related_information_elements = mmd['mmd:related_information']
 
             if isinstance(related_information_elements, dict): #Only one element
                 related_information_elements = [related_information_elements] # make it an iterable list
@@ -693,75 +688,75 @@ class MMD4SolR:
         """
         ISO TopicCategory
         """
-        if 'mmd:iso_topic_category' in self.mydoc['mmd:mmd']:
+        if 'mmd:iso_topic_category' in mmd:
             mydict['iso_topic_category'] = []
-            if isinstance(self.mydoc['mmd:mmd']['mmd:iso_topic_category'], list):
-                for iso_topic_category in self.mydoc['mmd:mmd']['mmd:iso_topic_category']:
+            if isinstance(mmd['mmd:iso_topic_category'], list):
+                for iso_topic_category in mmd['mmd:iso_topic_category']:
                     mydict['iso_topic_category'].append(iso_topic_category)
             else:
-                mydict['iso_topic_category'].append(self.mydoc['mmd:mmd']['mmd:iso_topic_category'])
+                mydict['iso_topic_category'].append(mmd['mmd:iso_topic_category'])
 
         """ Keywords """
         # Added double indexing of GCMD keywords. keywords_gcmd  (and keywords_wigos) are for faceting in SolR. What is shown in data portal is keywords_keyword.
-        if 'mmd:keywords' in self.mydoc['mmd:mmd']:
+        if 'mmd:keywords' in mmd:
             mydict['keywords_keyword'] = []
             mydict['keywords_vocabulary'] = []
             mydict['keywords_gcmd'] = []
             mydict['keywords_wigos'] = [] # Not used yet
             # If there is only one keyword list
-            if isinstance(self.mydoc['mmd:mmd']['mmd:keywords'], dict):
-                if isinstance(self.mydoc['mmd:mmd']['mmd:keywords']['mmd:keyword'],str):
-                    if self.mydoc['mmd:mmd']['mmd:keywords']['@vocabulary'] == "GCMDSK":
-                        mydict['keywords_gcmd'].append(self.mydoc['mmd:mmd']['mmd:keywords']['mmd:keyword'])
-                    mydict['keywords_keyword'].append(self.mydoc['mmd:mmd']['mmd:keywords']['mmd:keyword'])
-                    mydict['keywords_vocabulary'].append(self.mydoc['mmd:mmd']['mmd:keywords']['@vocabulary'])
+            if isinstance(mmd['mmd:keywords'], dict):
+                if isinstance(mmd['mmd:keywords']['mmd:keyword'],str):
+                    if mmd['mmd:keywords']['@vocabulary'] == "GCMDSK":
+                        mydict['keywords_gcmd'].append(mmd['mmd:keywords']['mmd:keyword'])
+                    mydict['keywords_keyword'].append(mmd['mmd:keywords']['mmd:keyword'])
+                    mydict['keywords_vocabulary'].append(mmd['mmd:keywords']['@vocabulary'])
                 else:
-                    for i in range(len(self.mydoc['mmd:mmd']['mmd:keywords']['mmd:keyword'])):
-                        if isinstance(self.mydoc['mmd:mmd']['mmd:keywords']['mmd:keyword'][i],str):
-                            if self.mydoc['mmd:mmd']['mmd:keywords']['@vocabulary'] == "GCMDSK":
-                                mydict['keywords_gcmd'].append(self.mydoc['mmd:mmd']['mmd:keywords']['mmd:keyword'][i])
-                            mydict['keywords_vocabulary'].append(self.mydoc['mmd:mmd']['mmd:keywords']['@vocabulary'])
-                            mydict['keywords_keyword'].append(self.mydoc['mmd:mmd']['mmd:keywords']['mmd:keyword'][i])
+                    for i in range(len(mmd['mmd:keywords']['mmd:keyword'])):
+                        if isinstance(mmd['mmd:keywords']['mmd:keyword'][i],str):
+                            if mmd['mmd:keywords']['@vocabulary'] == "GCMDSK":
+                                mydict['keywords_gcmd'].append(mmd['mmd:keywords']['mmd:keyword'][i])
+                            mydict['keywords_vocabulary'].append(mmd['mmd:keywords']['@vocabulary'])
+                            mydict['keywords_keyword'].append(mmd['mmd:keywords']['mmd:keyword'][i])
             # If there are multiple keyword lists
-            elif isinstance(self.mydoc['mmd:mmd']['mmd:keywords'], list):
-                for i in range(len(self.mydoc['mmd:mmd']['mmd:keywords'])):
-                    if isinstance(self.mydoc['mmd:mmd']['mmd:keywords'][i],dict):
+            elif isinstance(mmd['mmd:keywords'], list):
+                for i in range(len(mmd['mmd:keywords'])):
+                    if isinstance(mmd['mmd:keywords'][i],dict):
                         # Check for empty lists
-                        if len(self.mydoc['mmd:mmd']['mmd:keywords'][i]) < 2:
+                        if len(mmd['mmd:keywords'][i]) < 2:
                             continue
-                        if isinstance(self.mydoc['mmd:mmd']['mmd:keywords'][i]['mmd:keyword'],list):
-                            for j in range(len(self.mydoc['mmd:mmd']['mmd:keywords'][i]['mmd:keyword'])):
-                                if self.mydoc['mmd:mmd']['mmd:keywords'][i]['@vocabulary'] == "GCMDSK":
-                                    mydict['keywords_gcmd'].append(self.mydoc['mmd:mmd']['mmd:keywords'][i]['mmd:keyword'][j])
-                                mydict['keywords_vocabulary'].append(self.mydoc['mmd:mmd']['mmd:keywords'][i]['@vocabulary'])
-                                mydict['keywords_keyword'].append(self.mydoc['mmd:mmd']['mmd:keywords'][i]['mmd:keyword'][j])
+                        if isinstance(mmd['mmd:keywords'][i]['mmd:keyword'],list):
+                            for j in range(len(mmd['mmd:keywords'][i]['mmd:keyword'])):
+                                if mmd['mmd:keywords'][i]['@vocabulary'] == "GCMDSK":
+                                    mydict['keywords_gcmd'].append(mmd['mmd:keywords'][i]['mmd:keyword'][j])
+                                mydict['keywords_vocabulary'].append(mmd['mmd:keywords'][i]['@vocabulary'])
+                                mydict['keywords_keyword'].append(mmd['mmd:keywords'][i]['mmd:keyword'][j])
                         else:
-                            if self.mydoc['mmd:mmd']['mmd:keywords'][i]['@vocabulary'] == "GCMDSK":
-                                mydict['keywords_gcmd'].append(self.mydoc['mmd:mmd']['mmd:keywords'][i]['mmd:keyword'])
-                            mydict['keywords_vocabulary'].append(self.mydoc['mmd:mmd']['mmd:keywords'][i]['@vocabulary'])
-                            mydict['keywords_keyword'].append(self.mydoc['mmd:mmd']['mmd:keywords'][i]['mmd:keyword'])
+                            if mmd['mmd:keywords'][i]['@vocabulary'] == "GCMDSK":
+                                mydict['keywords_gcmd'].append(mmd['mmd:keywords'][i]['mmd:keyword'])
+                            mydict['keywords_vocabulary'].append(mmd['mmd:keywords'][i]['@vocabulary'])
+                            mydict['keywords_keyword'].append(mmd['mmd:keywords'][i]['mmd:keyword'])
 
             else:
-                if self.mydoc['mmd:mmd']['mmd:keywords']['@vocabulary'] == "GCMDSK":
-                    mydict['keywords_gcmd'].append(self.mydoc['mmd:mmd']['mmd:keywords']['mmd:keyword'])
-                mydict['keywords_vocabulary'].append(self.mydoc['mmd:mmd']['mmd:keywords']['@vocabulary'])
-                mydict['keywords_keyword'].append(self.mydoc['mmd:mmd']['mmd:keywords']['mmd:keyword'])
+                if mmd['mmd:keywords']['@vocabulary'] == "GCMDSK":
+                    mydict['keywords_gcmd'].append(mmd['mmd:keywords']['mmd:keyword'])
+                mydict['keywords_vocabulary'].append(mmd['mmd:keywords']['@vocabulary'])
+                mydict['keywords_keyword'].append(mmd['mmd:keywords']['mmd:keyword'])
 
         """ Project """
         mydict['project_short_name'] = []
         mydict['project_long_name'] = []
-        if 'mmd:project' in self.mydoc['mmd:mmd']:
-            if self.mydoc['mmd:mmd']['mmd:project'] == None:
+        if 'mmd:project' in mmd:
+            if mmd['mmd:project'] == None:
                 mydict['project_short_name'].append('Not provided')
                 mydict['project_long_name'].append('Not provided')
-            elif isinstance(self.mydoc['mmd:mmd']['mmd:project'], list):
+            elif isinstance(mmd['mmd:project'], list):
             # Check if multiple nodes are present
-                for e in self.mydoc['mmd:mmd']['mmd:project']:
+                for e in mmd['mmd:project']:
                     mydict['project_short_name'].append(e['mmd:short_name'])
                     mydict['project_long_name'].append(e['mmd:long_name'])
             else:
                 # Extract information as appropriate
-                e = self.mydoc['mmd:mmd']['mmd:project']
+                e = mmd['mmd:project']
                 if 'mmd:short_name' in e:
                     mydict['project_short_name'].append(e['mmd:short_name'])
                 else:
@@ -775,9 +770,9 @@ class MMD4SolR:
 
         """ Platform """
         # FIXME add check for empty sub elements...
-        if 'mmd:platform' in self.mydoc['mmd:mmd']:
+        if 'mmd:platform' in mmd:
 
-            platform_elements = self.mydoc['mmd:mmd']['mmd:platform']
+            platform_elements = mmd['mmd:platform']
             if isinstance(platform_elements, dict): #Only one element
                 platform_elements = [platform_elements] # make it an iterable list
 
@@ -805,17 +800,17 @@ class MMD4SolR:
                     mydict['platform_sentinel'] = initial_platform[:-1]
 
         """ Activity type """
-        if 'mmd:activity_type' in self.mydoc['mmd:mmd']:
+        if 'mmd:activity_type' in mmd:
             mydict['activity_type'] = []
-            if isinstance(self.mydoc['mmd:mmd']['mmd:activity_type'], list):
-                for activity_type in self.mydoc['mmd:mmd']['mmd:activity_type']:
+            if isinstance(mmd['mmd:activity_type'], list):
+                for activity_type in mmd['mmd:activity_type']:
                     mydict['activity_type'].append(activity_type)
             else:
-                mydict['activity_type'].append(self.mydoc['mmd:mmd']['mmd:activity_type'])
+                mydict['activity_type'].append(mmd['mmd:activity_type'])
 
         """ Dataset citation """
-        if 'mmd:dataset_citation' in self.mydoc['mmd:mmd']:
-            dataset_citation_elements = self.mydoc['mmd:mmd']['mmd:dataset_citation']
+        if 'mmd:dataset_citation' in mmd:
+            dataset_citation_elements = mmd['mmd:dataset_citation']
 
             if isinstance(dataset_citation_elements, dict): #Only one element
                 dataset_citation_elements = [dataset_citation_elements] # make it an iterable list
@@ -830,8 +825,8 @@ class MMD4SolR:
                     mydict['dataset_citation_{}'.format(element_suffix)] = v
 
         """ Quality control """
-        if 'mmd:quality_control' in self.mydoc['mmd:mmd'] and self.mydoc['mmd:mmd']['mmd:quality_control'] != None:
-            mydict['quality_control'] = str(self.mydoc['mmd:mmd']['mmd:quality_control'])
+        if 'mmd:quality_control' in mmd and mmd['mmd:quality_control'] != None:
+            mydict['quality_control'] = str(mmd['mmd:quality_control'])
 
         """ Adding MMD document as base64 string"""
         # Check if this can be simplified in the workflow.
