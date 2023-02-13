@@ -67,7 +67,7 @@ def parse_arguments():
                         help='Specify the zoom level for the thumbnail.')
     parser.add_argument('-ac', '--add_coastlines', const=True, nargs='?', required=False,
                         help='Add coastlines too the thumbnail (True/False). Default True')
-    parser.add_argument('-t_extent', '--thumbnail_extent', required=False, nargs='+', 
+    parser.add_argument('-t_extent', '--thumbnail_extent', required=False, nargs='+',
                         help='Spatial extent of thumbnail in lat/lon degrees like "x0 x1 y0 y1"')
 
     args = parser.parse_args()
