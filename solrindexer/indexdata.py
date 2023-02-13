@@ -173,21 +173,14 @@ class MMD4SolR:
         """
         gcmd = False
         if isinstance(self.mydoc['mmd:mmd']['mmd:keywords'], list):
-            i = 0
-            # TODO: remove unused for loop
-            # Switch to using e instead of self.mydoc...
-            for e in self.mydoc['mmd:mmd']['mmd:keywords']:
-                if str(self.mydoc['mmd:mmd']['mmd:keywords'][i]['@vocabulary']).upper() == 'GCMDSK':
+            for elem in self.mydoc['mmd:mmd']['mmd:keywords']:
+                if str(elem['@vocabulary']).upper() == 'GCMDSK':
                     gcmd = True
                     break
-                i += 1
             if not gcmd:
                 logger.warning('Keywords in GCMD are not available (a)')
         else:
-            if str(self.mydoc['mmd:mmd']['mmd:keywords']['@vocabulary']).upper() == 'GCMDSK':
-                gcmd = True
-            else:
-                # warnings.warning('Keywords in GCMD are not available')
+            if str(self.mydoc['mmd:mmd']['mmd:keywords']['@vocabulary']).upper() != 'GCMDSK':
                 logger.warning('Keywords in GCMD are not available (b)')
 
         """
@@ -228,28 +221,27 @@ class MMD4SolR:
             mydate = dateutil.parser.parse(myvalue)
         if 'mmd:temporal_extent' in self.mydoc['mmd:mmd']:
             if isinstance(self.mydoc['mmd:mmd']['mmd:temporal_extent'], list):
-
-                i = 0
                 for item in self.mydoc['mmd:mmd']['mmd:temporal_extent']:
                     for mykey in item:
                         if (item[mykey] is None) or (item[mykey] == '--'):
                             mydate = ''
-                            self.mydoc['mmd:mmd']['mmd:temporal_extent'][i][mykey] = mydate
+                            item[mykey] = mydate
                         else:
                             mydate = dateutil.parser.parse(str(item[mykey]))
-                            self.mydoc['mmd:mmd']['mmd:temporal_extent'][i][mykey] = mydate.strftime('%Y-%m-%dT%H:%M:%SZ')
-                    i += 1
+                            item[mykey] = mydate.strftime('%Y-%m-%dT%H:%M:%SZ')
+
             else:
-                for mykey in self.mydoc['mmd:mmd']['mmd:temporal_extent']:
+                for mykey, myitem in self.mydoc['mmd:mmd']['mmd:temporal_extent'].items():
                     if mykey == '@xmlns:gml':
                         continue
-                    if (self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey] is None) or (self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey] == '--'):
+                    if (myitem is None) or (myitem == '--'):
                         mydate = ''
-                        self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey] = mydate
+                        self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey].set(mydate)
                     else:
                         try:
-                            mydate = dateutil.parser.parse(str(self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey]))
-                            self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey] = mydate.strftime('%Y-%m-%dT%H:%M:%SZ')
+                            mydate = dateutil.parser.parse(str(myitem))
+                            self.mydoc['mmd:mmd']['mmd:temporal_extent'][mykey] = \
+                                mydate.strftime('%Y-%m-%dT%H:%M:%SZ')
                         except Exception as e:
                             logger.error('Date format could not be parsed: %s', e)
 
