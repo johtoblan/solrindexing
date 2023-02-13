@@ -597,17 +597,17 @@ class MMD4SolR:
                 for key, value in data_center.items():
                     # if sub element is ordered dict
                     if isinstance(value, dict):
-                        for kkey, vvalue in value.items():
-                            element_name = f'data_center_{kkey.split(":")[-1]}'
+                        for key, val in value.items():
+                            element_name = f'data_center_{key.split(":")[-1]}'
                             # create key in mydict
                             if element_name not in mydict.keys():
                                 mydict[element_name] = []
-                                mydict[element_name].append(vvalue)
+                                mydict[element_name].append(val)
                             else:
-                                mydict[element_name].append(vvalue)
+                                mydict[element_name].append(val)
                     # sub element is not ordered dicts
                     else:
-                        element_name = f'data_center_{kkey.split(":")[-1]}'
+                        element_name = f'data_center_{key.split(":")[-1]}'
                         # create key in mydict. Repetition of above. Should be simplified.
                         if element_name not in mydict.keys():
                             mydict[element_name] = []
@@ -804,14 +804,15 @@ class MMD4SolR:
                 for platform_key, platform_value in platform.items():
                     # if sub element is ordered dict
                     if isinstance(platform_value, dict):
-                        for kkey, vvalue in platform_value.items():
-                            element_name = f'platform_{platform_key.split(":")[-1]}_{kkey.split(":")[-1]}'
+                        for key, val in platform_value.items():
+                            local_key = key.split(":")[-1]
+                            element_name = f'platform_{platform_key.split(":")[-1]}_{local_key}'
                             # create key in mydict
                             if element_name not in mydict.keys():
                                 mydict[element_name] = []
-                                mydict[element_name].append(vvalue)
+                                mydict[element_name].append(val)
                             else:
-                                mydict[element_name].append(vvalue)
+                                mydict[element_name].append(val)
                     # sub element is not ordered dicts
                     else:
                         element_name = 'platform_{}'.format(platform_key.split(':')[-1])
@@ -926,10 +927,10 @@ class IndexMMD:
                 bool
         """
         if level == 1 or level is None:
-            input_record.update({'dataset_type':'Level-1'})
-            input_record.update({'isParent':'false'})
+            input_record.update({'dataset_type': 'Level-1'})
+            input_record.update({'isParent': 'false'})
         elif level == 2:
-            input_record.update({'dataset_type':'Level-2'})
+            input_record.update({'dataset_type': 'Level-2'})
         else:
             logger.error('Invalid level given: {}. Hence terminating'.format(level))
 
@@ -946,10 +947,10 @@ class IndexMMD:
                 logger.error("Something failed while retrieving feature type: %s", str(e))
             if myfeature:
                 logger.info('feature_type found: %s', myfeature)
-                input_record.update({'feature_type':myfeature})
+                input_record.update({'feature_type': myfeature})
 
         self.id = input_record['id']
-        if 'data_access_url_ogc_wms' in input_record and addThumbnail == True:
+        if 'data_access_url_ogc_wms' in input_record and addThumbnail:
             logger.info("Checking thumbnails...")
             getCapUrl = input_record['data_access_url_ogc_wms']
             if not myfeature:
@@ -965,10 +966,11 @@ class IndexMMD:
 
             if not thumbnail_data:
                 logger.warning('Could not properly parse WMS GetCapabilities document')
-                # If WMS is not available, remove this data_access element from the XML that is indexed
+                # If WMS is not available, remove this data_access element from the XML that
+                # is indexed
                 del input_record['data_access_url_ogc_wms']
             else:
-                input_record.update({'thumbnail_data':thumbnail_data})
+                input_record.update({'thumbnail_data': thumbnail_data})
 
         logger.info("Adding records to core...")
 
@@ -991,10 +993,14 @@ class IndexMMD:
         mmd_record2 = list()
 
         # Fix for NPI data...
-        myl2record['related_dataset'] = myl2record['related_dataset'].replace('http://data.npolar.no/dataset/','')
-        myl2record['related_dataset'] = myl2record['related_dataset'].replace('https://data.npolar.no/dataset/','')
-        myl2record['related_dataset'] = myl2record['related_dataset'].replace('http://api.npolar.no/dataset/','')
-        myl2record['related_dataset'] = myl2record['related_dataset'].replace('.xml','')
+        myl2record['related_dataset'] = myl2record['related_dataset'].replace(
+            'http://data.npolar.no/dataset/', '')
+        myl2record['related_dataset'] = myl2record['related_dataset'].replace(
+            'https://data.npolar.no/dataset/', '')
+        myl2record['related_dataset'] = myl2record['related_dataset'].replace(
+            'http://api.npolar.no/dataset/', '')
+        myl2record['related_dataset'] = myl2record['related_dataset'].replace(
+            '.xml', '')
 
         # Add additonal helper fields for handling in SolR and Drupal
         myl2record['isChild'] = 'true'
@@ -1007,10 +1013,10 @@ class IndexMMD:
                 myfeature = self.get_feature_type(myl2record['data_access_url_opendap'])
             except Exception as e:
                 logger.error("Something failed while retrieving feature type: %s", str(e))
-                #raise RuntimeError('Something failed while retrieving feature type')
+
             if myfeature:
                 logger.info('feature_type found: %s', myfeature)
-                myl2record.update({'feature_type':myfeature})
+                myl2record.update({'feature_type': myfeature})
 
         self.id = myl2record['id']
         # Add thumbnail for WMS supported datasets
@@ -1034,17 +1040,17 @@ class IndexMMD:
                     warnings.warning("Couldn't add thumbnail.")
 
         if addThumbnail and thumbnail_data:
-            myl2record.update({'thumbnail_data':thumbnail_data})
+            myl2record.update({'thumbnail_data': thumbnail_data})
 
         mmd_record2.append(myl2record)
 
         """ Retrieve level 1 record """
         myparid = myl2record['related_dataset']
-        idrepls = [':','/','.']
+        idrepls = [':', '/', '.']
         for e in idrepls:
-            myparid = myparid.replace(e,'-')
+            myparid = myparid.replace(e, '-')
         try:
-            myresults = self.solrc.search('id:' + myparid, **{'wt':'python','rows':100})
+            myresults = self.solrc.search('id:' + myparid, **{'wt': 'python', 'rows': 100})
         except Exception as e:
             logger.error("Something failed in searching for parent dataset, " + str(e))
 
@@ -1076,25 +1082,28 @@ class IndexMMD:
         # Check that the parent found has related_dataset set and
         # update this, but first check that it doesn't already exists
         if 'related_dataset' in myresults:
+            myl2id = myl2record['metadata_identifier'].replace(':', '_')
             # Need to check that this doesn't already exist...
-            if myl2record['metadata_identifier'].replace(':','_') not in myresults['related_dataset']:
-                myresults['related_dataset'].append(myl2record['metadata_identifier'].replace(':','_'))
+            if myl2id not in myresults['related_dataset']:
+                myresults['related_dataset'].append(myl2id)
         else:
             logger.info('This dataset was not found in parent, creating it...')
             myresults['related_dataset'] = []
-            logger.info('Adding dataset with identifier %s to parent %s', myl2record['metadata_identifier'].replace(':','_'),myl2record['related_dataset'])
-            myresults['related_dataset'].append(myl2record['metadata_identifier'].replace(':','_'))
+            logger.info('Adding dataset with identifier %s to parent %s',
+                        myl2id,
+                        myl2record['related_dataset'])
+            myresults['related_dataset'].append(myl2id)
         mmd_record1 = list()
         mmd_record1.append(myresults)
 
-        """ Index level 2 dataset """
+        logger.info("Index level 2 dataset")
         try:
             self.solrc.add(mmd_record2)
         except Exception as e:
             raise Exception("Something failed in SolR add level 2", str(e))
         logger.info("Level 2 record successfully added.")
 
-        """ Update level 1 record with id of this dataset """
+        logger.info("Update level 1 record with id of this dataset")
         try:
             self.solrc.add(mmd_record1)
         except Exception as e:
@@ -1108,16 +1117,18 @@ class IndexMMD:
             Returns:
                 thumbnail: base64 string representation of image
         """
-        print(url)
+        logger.info("adding thumbnail for: ", url)
         if thumbnail_type == 'wms':
             try:
                 thumbnail = self.create_wms_thumbnail(url)
                 return thumbnail
             except Exception as e:
-                logger.error("Thumbnail creation from OGC WMS failed: %s",e)
+                logger.error("Thumbnail creation from OGC WMS failed: %s", e)
                 return None
-        elif thumbnail_type == 'ts': #time_series
-            thumbnail = 'TMP'  # create_ts_thumbnail(...)
+        # time_series
+        elif thumbnail_type == 'ts':
+            # create_ts_thumbnail(...)
+            thumbnail = 'TMP'
             return thumbnail
         else:
             logger.error('Invalid thumbnail type: {}'.format(thumbnail_type))
@@ -1142,10 +1153,10 @@ class IndexMMD:
         thumbnail_extent = self.thumbnail_extent
 
         # map projection string to ccrs projection
-        if isinstance(map_projection,str):
-            map_projection = getattr(ccrs,map_projection)()
+        if isinstance(map_projection, str):
+            map_projection = getattr(ccrs, map_projection)()
 
-        wms = WebMapService(url,timeout=wms_timeout)
+        wms = WebMapService(url, timeout=wms_timeout)
         available_layers = list(wms.contents.keys())
 
         if wms_layer not in available_layers:
@@ -1165,12 +1176,13 @@ class IndexMMD:
 
         if not thumbnail_extent:
             wms_extent = wms.contents[available_layers[0]].boundingBoxWGS84
-            cartopy_extent = [wms_extent[0], wms_extent[2], wms_extent[1], wms_extent[3]]
+            # Not accessed
+            # cartopy_extent = [wms_extent[0], wms_extent[2], wms_extent[1], wms_extent[3]]
 
             cartopy_extent_zoomed = [wms_extent[0] - wms_zoom_level,
-                    wms_extent[2] + wms_zoom_level,
-                    wms_extent[1] - wms_zoom_level,
-                    wms_extent[3] + wms_zoom_level]
+                                     wms_extent[2] + wms_zoom_level,
+                                     wms_extent[1] - wms_zoom_level,
+                                     wms_extent[3] + wms_zoom_level]
         else:
             cartopy_extent_zoomed = thumbnail_extent
 
@@ -1189,30 +1201,28 @@ class IndexMMD:
 
         fig, ax = plt.subplots(subplot_kw=subplot_kw)
 
-        #land_mask = cartopy.feature.NaturalEarthFeature(category='physical',
+        # land_mask = cartopy.feature.NaturalEarthFeature(category='physical',
         #                                                scale='50m',
         #                                                facecolor='#cccccc',
         #                                                name='land')
-        #ax.add_feature(land_mask, zorder=0, edgecolor='#aaaaaa',
+        # ax.add_feature(land_mask, zorder=0, edgecolor='#aaaaaa',
         #        linewidth=0.5)
 
         # transparent background
         ax.spines['geo'].set_visible(False)
-        #ax.outline_patch.set_visible(False)
-        ##ax.background_patch.set_visible(False)
+        # ax.outline_patch.set_visible(False)
+        # ax.background_patch.set_visible(False)
         fig.patch.set_alpha(0)
         fig.set_alpha(0)
         fig.set_figwidth(4.5)
         fig.set_figheight(4.5)
         fig.set_dpi(100)
-        ##ax.background_patch.set_alpha(1)
+        # ax.background_patch.set_alpha(1)
 
-        ax.add_wms(wms, wms_layer,
-                wms_kwargs={'transparent': False,
-                    'styles':wms_style})
+        ax.add_wms(wms, wms_layer, wms_kwargs={'transparent': False, 'styles': wms_style})
 
         if add_coastlines:
-            ax.coastlines(resolution="50m",linewidth=0.5)
+            ax.coastlines(resolution="50m", linewidth=0.5)
         if map_projection == ccrs.PlateCarree():
             ax.set_extent(cartopy_extent_zoomed)
         else:
@@ -1226,8 +1236,8 @@ class IndexMMD:
             data = infile.read()
             encode_string = base64.b64encode(data)
 
-        thumbnail_b64 = (b'data:image/png;base64,' +
-                encode_string).decode('utf-8')
+        thumbnail_b64 = b'data:image/png;base64,' +\
+                        encode_string.decode('utf-8')
 
         # Remove thumbnail
         os.remove(thumbnail_fname)
@@ -1255,21 +1265,17 @@ class IndexMMD:
             raise
         ds.close()
 
-        if featureType not in ['point', 'timeSeries', 'trajectory','profile','timeSeriesProfile','trajectoryProfile']:
+        if featureType not in ['point', 'timeSeries', 'trajectory', 'profile', 'timeSeriesProfile',
+                               'trajectoryProfile']:
             logger.warning("The featureType found - %s - is not valid", featureType)
             logger.warning("Fixing this locally")
-            if featureType == "TimeSeries":
-                featureType = 'timeSeries'
-            elif featureType == "timeseries":
+            if featureType.lower() == "timeseries":
                 featureType = 'timeSeries'
             elif featureType == "timseries":
                 featureType = 'timeSeries'
             else:
                 logger.warning("The featureType found is a new typo...")
-
-            #raise
-
-        return(featureType)
+        return featureType
 
     def delete_level1(self, datasetid):
         """ Require ID as input """
