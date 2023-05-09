@@ -77,16 +77,23 @@ def getZones(lon, lat):
 class MMD4SolR:
     """ Read and check MMD files, convert to dictionary """
 
-    def __init__(self, filename):
+    def __init__(self, filename, file=None):
         logger.info('Creating an instance of IndexMMD')
         """ set variables in class """
-        self.filename = filename
-        try:
-            with open(self.filename, encoding='utf-8') as fd:
-                self.mydoc = xmltodict.parse(fd.read())
-        except Exception as e:
-            logger.error('Could not open file: %s; %s', self.filename, e)
-            raise
+        if file is None:
+            self.filename = filename
+            try:
+                with open(self.filename, encoding='utf-8') as fd:
+                    self.mydoc = xmltodict.parse(fd.read())
+            except Exception as e:
+                logger.error('Could not open file: %s; %s', self.filename, e)
+                raise
+        else:
+            try:
+                self.mydoc = xmltodict.parse(file)
+            except Exception as e:
+                logger.error('Could read incoming file: %s' , e)
+                raise
 
     def check_mmd(self):
         """ Check and correct MMD if needed """
@@ -649,15 +656,17 @@ class MMD4SolR:
                         if e['@mmd:relation_type'] == 'parent':
                             if '#text' in dict(e):
                                 mydict['related_dataset'] = e['#text']
+                                mydict['related_dataset_id'] = mydict['related_dataset']
                                 for e in IDREPLS:
-                                    mydict['related_dataset'] = \
-                                        mydict['related_dataset'].replace(e, '-')
+                                    mydict['related_dataset_id'] = \
+                                        mydict['related_dataset_id'].replace(e, '-')
             else:
                 # Not sure if this is used??
                 if '#text' in dict(mmd['mmd:related_dataset']):
                     mydict['related_dataset'] = mmd['mmd:related_dataset']['#text']
+                    mydict['related_dataset_id'] = mydict['related_dataset']
                     for e in IDREPLS:
-                        mydict['related_dataset'] = mydict['related_dataset'].replace(e, '-')
+                        mydict['related_dataset_id'] = mydict['related_dataset_id'].replace(e, '-')
 
         logger.info("Storage information")
         storage_information = mmd.get("mmd:storage_information", None)
