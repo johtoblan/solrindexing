@@ -10,7 +10,7 @@ projects SIOS KC and Norwegian Scientific Data Network.
 ## Usage with directory and no thumbnails
 
 ```bash
-./src/indexdata.py -c etc/config.yml -d /home/johannestl/Desktop/S-ENDA/SOLR/mmd-xml-dev/arch_5/arch_9/arch_6 -n
+indexdata -c etc/config.yml -d tests/data -n
 ```
 
 ## Logger object
