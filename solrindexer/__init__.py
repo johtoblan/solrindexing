@@ -21,11 +21,12 @@ import os
 import logging
 
 from .indexdata import IndexMMD
+from .indexdata import MMD4Solr
 
 __package__ = "solrindexer"
 __version__ = "2.0.0"
 __date__ = "2023-12-13"
-__all__ = ["IndexMMD"]
+__all__ = ["IndexMMD", "MMD4Solr"]
 
 
 def _init_logging(log_obj):
