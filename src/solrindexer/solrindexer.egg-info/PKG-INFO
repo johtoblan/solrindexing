@@ -1,0 +1,27 @@
+Metadata-Version: 2.1
+Name: solrindexer
+Version: 1.0
+Summary: Tool for indexing MMD files in to Solr
+Home-page: https://github.com/johtoblan/solrindexing
+Author: MET Norway
+Author-email: steingod@met.no
+Description-Content-Type: text/markdown
+License-File: LICENSE
+
+# solrindexing
+Useful tools and wrappers used for indexing MMD in SolR. This software is
+developed for use in the context of Arctic Data Centre, supported through
+projects SIOS KC and Norwegian Scientific Data Network.
+
+
+# Usage
+
+## Logger object
+* `SOLRINDEXER_LOGFILE` can be set to enable logging to file.
+* `SOLRINDEXER_LOGLEVEL` can be set to change log level. See the Debugging section below.
+
+## Usage with directory and no thumbnails
+
+```bash
+./src/indexdata.py -c etc/config.yml -d /home/johannestl/Desktop/S-ENDA/SOLR/mmd-xml-dev/arch_5/arch_9/arch_6 -n
+```

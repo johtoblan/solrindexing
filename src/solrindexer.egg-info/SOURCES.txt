@@ -1,0 +1,12 @@
+LICENSE
+README.md
+pyproject.toml
+setup.cfg
+setup.py
+src/solrindexer/__init__.py
+src/solrindexer/indexdata.py
+src/solrindexer/searchindex.py
+src/solrindexer.egg-info/PKG-INFO
+src/solrindexer.egg-info/SOURCES.txt
+src/solrindexer.egg-info/dependency_links.txt
+src/solrindexer.egg-info/top_level.txt
