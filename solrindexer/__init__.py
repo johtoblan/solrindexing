@@ -16,6 +16,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+__package__ = "solrindexer"
+__version__ = "1.0"
 
 import os
 import logging

@@ -2,10 +2,3 @@
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-py-modules = ["solrindexer"]
-
-[project]
-name = "solrindexer"
-version = "0.5.0"
