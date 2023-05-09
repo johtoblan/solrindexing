@@ -1,0 +1,8 @@
+cartopy
+lxml
+netCDF4
+OWSLib
+pysolr
+PyYAML
+requests
+xmltodict
